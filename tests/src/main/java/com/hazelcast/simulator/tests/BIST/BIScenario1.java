@@ -6,6 +6,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
+import com.hazelcast.simulator.probes.probes.IntervalProbe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -26,7 +27,7 @@ import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
 public class BIScenario1 {
 
     // properties
-    public int keyCount = 300000;
+    public int keyCount = 150000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
     public int numberOfMembers = 2;
 
@@ -40,9 +41,16 @@ public class BIScenario1 {
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
 
+    public IntervalProbe tradeMapGetLatency;
+    public IntervalProbe tradeMapSetLatency;
+    public IntervalProbe bapQueueAddLAtency;
+    public IntervalProbe ViopQueueAddLAtency;
+    public IntervalProbe totalLatency;
+
     @Setup
     public void setUp(TestContext testContext) throws Exception {
         LOGGER.info("======== SETUP =========");
+        this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
         tradableMap = targetInstance.getMap("TradableMap");
         bapQueue = targetInstance.getQueue("BapQueue");
@@ -61,14 +69,13 @@ public class BIScenario1 {
         LOGGER.info("======== THE END =========");
     }
 
-    @Warmup(global = true)
+    @Warmup
     public void warmup() {
         try {
             waitClusterSize(LOGGER, testContext.getTargetInstance(), numberOfMembers);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
         MapStreamer<Integer, SomeObject> streamer = MapStreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
@@ -86,23 +93,37 @@ public class BIScenario1 {
     private class Worker extends AbstractMonotonicWorker {
 
         protected void beforeRun() {
-            if (tradableMap.size() != keyCount) {
+            if (tradableMap.size() == 0) {
                 throw new RuntimeException("Warmup has not run since the map is not filled correctly, found size: " + tradableMap.size());
             }
         }
 
         @Override
         protected void timeStep() {
-            Integer key = randomInt(keyCount);
+            totalLatency.started();
+            Integer key = randomKey();
+            tradeMapGetLatency.started();
             SomeObject value = tradableMap.get(key);
+            tradeMapGetLatency.done();
             SomeObject newValue = doSomething(value);
+            tradeMapSetLatency.started();
             tradableMap.set(key, newValue);
-            bapQueue.add(new MixedObject(value, newValue));
-            viopQueue.add(new MixedObject(value, newValue));
-            System.out.println("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
+            tradeMapSetLatency.done();
+            bapQueueAddLAtency.started();
+            bapQueue.add(new MixedObject(value, newValue, key));
+            bapQueueAddLAtency.done();
+            ViopQueueAddLAtency.started();
+            viopQueue.add(new MixedObject(value, newValue, key));
+            ViopQueueAddLAtency.done();
+            LOGGER.info("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
+            totalLatency.done();
         }
 
         protected void afterRun() {
+        }
+
+        private Integer randomKey() {
+            return keys[randomInt(keys.length)];
         }
 
     }

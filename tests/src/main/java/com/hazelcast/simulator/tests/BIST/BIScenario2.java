@@ -42,6 +42,7 @@ public class BIScenario2 {
     @Setup
     public void setUp(TestContext testContext) throws Exception {
         LOGGER.info("======== SETUP =========");
+        this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
         indexMap = targetInstance.getMap("TradableMap");
         viopQueue = targetInstance.getQueue("ViopQueue");
@@ -94,7 +95,7 @@ public class BIScenario2 {
             SomeObject value = indexMap.get(key);
             SomeObject newValue = doSomething(value);
             indexMap.set(key, newValue);
-            viopQueue.add(new MixedObject(value, newValue));
+            viopQueue.add(new MixedObject(value, newValue, key));
             System.out.println("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
         }
 

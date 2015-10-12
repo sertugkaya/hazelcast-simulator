@@ -15,6 +15,7 @@
             <multicast enabled="false"/>
             <tcp-ip enabled="true">
                 <!--MEMBERS-->
+                10.212.1.109,10.212.1.110
             </tcp-ip>
         </join>
     </network>
@@ -59,10 +60,10 @@
                 com.hazelcast.simulator.tests.syntheticmap.SyntheticMapSerializableFactory
             </data-serializable-factory>
             <data-serializable-factory
-                    factory-id="1">MixedObjectSerializableFactory
+                    factory-id="1">com.hazelcast.simulator.tests.BIST.MixedObjectSerializableFactory
             </data-serializable-factory>
             <data-serializable-factory
-                    factory-id="2">SomeObjectSerializableFactory
+                    factory-id="2">com.hazelcast.simulator.tests.BIST.SomeObjectSerializableFactory
             </data-serializable-factory>
             </data-serializable-factories>
 

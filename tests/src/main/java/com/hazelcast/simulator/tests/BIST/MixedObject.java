@@ -15,9 +15,10 @@ public class MixedObject implements IdentifiedDataSerializable {
     private SomeObject oldValue;
     private SomeObject newValue;
 
-    public MixedObject(SomeObject value, SomeObject newValue) {
+    public MixedObject(SomeObject value, SomeObject newValue, Integer id) {
         this.oldValue = value;
         this.newValue = value;
+        this.id = id;
     }
 
     public MixedObject() {
