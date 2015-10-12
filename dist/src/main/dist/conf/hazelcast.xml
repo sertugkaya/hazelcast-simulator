@@ -58,7 +58,14 @@
             <data-serializable-factory factory-id="3000">
                 com.hazelcast.simulator.tests.syntheticmap.SyntheticMapSerializableFactory
             </data-serializable-factory>
-        </data-serializable-factories>
+            <data-serializable-factory
+                    factory-id="1">MixedObjectSerializableFactory
+            </data-serializable-factory>
+            <data-serializable-factory
+                    factory-id="2">SomeObjectSerializableFactory
+            </data-serializable-factory>
+            </data-serializable-factories>
+
 
         <portable-factories>
             <portable-factory factory-id="10000000">
