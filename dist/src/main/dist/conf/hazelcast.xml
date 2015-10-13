@@ -15,7 +15,6 @@
             <multicast enabled="false"/>
             <tcp-ip enabled="true">
                 <!--MEMBERS-->
-                <members>10.212.1.109,10.212.1.110</members>
             </tcp-ip>
         </join>
     </network>
