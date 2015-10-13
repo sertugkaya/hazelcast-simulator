@@ -14,8 +14,8 @@ import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.Warmup;
 import com.hazelcast.simulator.tests.helpers.KeyLocality;
-import com.hazelcast.simulator.worker.loadsupport.MapStreamer;
-import com.hazelcast.simulator.worker.loadsupport.MapStreamerFactory;
+import com.hazelcast.simulator.worker.loadsupport.Streamer;
+import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.waitClusterSize;
@@ -77,7 +77,7 @@ public class BIScenario1 {
             e.printStackTrace();
         }
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
-        MapStreamer<Integer, SomeObject> streamer = MapStreamerFactory.getInstance(tradableMap);
+        Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
             SomeObject value = new SomeObject();
             streamer.pushEntry(key, value);
