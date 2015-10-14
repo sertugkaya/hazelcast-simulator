@@ -27,7 +27,7 @@ import java.util.Properties;
 import static com.hazelcast.simulator.utils.CommonUtils.closeQuietly;
 import static java.lang.String.format;
 
-public class JavaInstallationsRepository {
+class JavaInstallationsRepository {
 
     private final List<JavaInstallation> installationList = new LinkedList<JavaInstallation>();
 
@@ -49,16 +49,15 @@ public class JavaInstallationsRepository {
 
     private Properties loadProperties(File propertiesFile) {
         Properties properties = new Properties();
-
         try {
-            final FileInputStream fis = new FileInputStream(propertiesFile);
+            FileInputStream fis = new FileInputStream(propertiesFile);
             try {
                 properties.load(fis);
             } finally {
                 closeQuietly(fis);
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new JavaInstallationException(e);
         }
         return properties;
     }
@@ -67,7 +66,7 @@ public class JavaInstallationsRepository {
         for (String key : properties.stringPropertyNames()) {
             String[] tokens = key.split("\\.");
             if (tokens.length != 2) {
-                throw new RuntimeException(
+                throw new JavaInstallationException(
                         format("Invalid java-installations properties: property key [%s] should be of form x.y", key));
             }
 
@@ -88,7 +87,7 @@ public class JavaInstallationsRepository {
             } else if ("javaHome".equalsIgnoreCase(property)) {
                 installation.setJavaHome(value);
             } else {
-                throw new RuntimeException(
+                throw new JavaInstallationException(
                         format("Invalid java-installations properties: property key [%s] is not unrecognized", key));
             }
         }
@@ -100,13 +99,13 @@ public class JavaInstallationsRepository {
             JavaInstallation installation = entry.getValue();
 
             if (installation.getVendor() == null) {
-                throw new RuntimeException(format("Invalid java-installations properties: %s.vendor is missing", id));
+                throw new JavaInstallationException(format("Invalid java-installations properties: %s.vendor is missing", id));
             }
             if (installation.getVersion() == null) {
-                throw new RuntimeException(format("Invalid java-installations properties: %s.version is missing", id));
+                throw new JavaInstallationException(format("Invalid java-installations properties: %s.version is missing", id));
             }
             if (installation.getJavaHome() == null) {
-                throw new RuntimeException(format("Invalid java-installations properties: %s.javaHome is missing", id));
+                throw new JavaInstallationException(format("Invalid java-installations properties: %s.javaHome is missing", id));
             }
 
             installationList.add(installation);

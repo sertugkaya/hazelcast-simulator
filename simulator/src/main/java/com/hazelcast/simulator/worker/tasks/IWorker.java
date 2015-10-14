@@ -6,11 +6,8 @@ package com.hazelcast.simulator.worker.tasks;
  *
  * Your implementation will get the following (optional) fields injected by {@link com.hazelcast.simulator.worker.TestContainer}:
  * {@link com.hazelcast.simulator.test.TestContext TestContext} testContext;
- * {@link com.hazelcast.simulator.probes.probes.IntervalProbe IntervalProbe} intervalProbe;
+ * {@link com.hazelcast.simulator.probes.Probe Probe} workerProbe;
  * <code>long</code> logFrequency;
- *
- * You have to implement a method with the {@link com.hazelcast.simulator.test.annotations.Performance} annotation, which will
- * be executed on a single worker instance (the last one which was created).
  */
 public interface IWorker extends Runnable {
 

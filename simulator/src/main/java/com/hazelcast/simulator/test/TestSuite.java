@@ -21,7 +21,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
@@ -35,20 +34,74 @@ import java.util.Set;
 import static com.hazelcast.simulator.utils.CommonUtils.closeQuietly;
 import static com.hazelcast.simulator.utils.FileUtils.isValidFileName;
 import static java.lang.String.format;
+import static java.util.Collections.singletonMap;
 
-@SuppressWarnings("checkstyle:visibilitymodifier")
-public class TestSuite implements Serializable {
+public class TestSuite {
 
-    private static final long serialVersionUID = 1;
+    private final List<TestCase> testCaseList = new LinkedList<TestCase>();
+    private final String id;
 
-    public final String id = new SimpleDateFormat("yyyy-MM-dd__HH_mm_ss").format(new Date());
-    public final List<TestCase> testCaseList = new LinkedList<TestCase>();
+    private int durationSeconds;
+    private boolean waitForTestCase;
+    private boolean failFast;
 
-    public Set<Failure.Type> tolerableFailures = Collections.emptySet();
+    private Set<FailureType> tolerableFailures = Collections.emptySet();
 
-    public int durationSeconds;
-    public boolean waitForTestCase;
-    public boolean failFast;
+    public TestSuite() {
+        this(null);
+    }
+
+    public TestSuite(String testSuiteId) {
+        id = (testSuiteId == null) ? createId() : testSuiteId;
+    }
+
+    public String createId() {
+        return new SimpleDateFormat("yyyy-MM-dd__HH_mm_ss").format(new Date());
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public List<TestCase> getTestCaseList() {
+        return testCaseList;
+    }
+
+    public void setDurationSeconds(int durationSeconds) {
+        this.durationSeconds = durationSeconds;
+    }
+
+    public int getDurationSeconds() {
+        return durationSeconds;
+    }
+
+    public void setWaitForTestCase(boolean waitForTestCase) {
+        this.waitForTestCase = waitForTestCase;
+    }
+
+    public boolean isWaitForTestCase() {
+        return waitForTestCase;
+    }
+
+    public void setFailFast(boolean failFast) {
+        this.failFast = failFast;
+    }
+
+    public boolean isFailFast() {
+        return failFast;
+    }
+
+    public void setTolerableFailures(Set<FailureType> tolerableFailures) {
+        this.tolerableFailures = tolerableFailures;
+    }
+
+    public Set<FailureType> getTolerableFailures() {
+        return tolerableFailures;
+    }
+
+    public void addTest(TestCase testCase) {
+        testCaseList.add(testCase);
+    }
 
     public TestCase getTestCase(String testCaseId) {
         if (testCaseId == null) {
@@ -63,12 +116,19 @@ public class TestSuite implements Serializable {
         return null;
     }
 
-    public void addTest(TestCase testCase) {
-        testCaseList.add(testCase);
-    }
-
     public int size() {
         return testCaseList.size();
+    }
+
+    public int getMaxTestCaseIdLength() {
+        int maxLength = Integer.MIN_VALUE;
+        for (TestCase testCase : testCaseList) {
+            String testCaseId = testCase.getId();
+            if (testCaseId != null && !testCaseId.isEmpty() && testCaseId.length() > maxLength) {
+                maxLength = testCaseId.length();
+            }
+        }
+        return (maxLength > 0) ? maxLength : 0;
     }
 
     @Override
@@ -82,12 +142,21 @@ public class TestSuite implements Serializable {
                 + '}';
     }
 
-    public static TestSuite loadTestSuite(File testPropertiesFile, String propertiesOverrideString) {
+    public static TestSuite loadTestSuite(File testPropertiesFile, String propertiesOverrideString, String testSuiteId) {
         Properties properties = loadProperties(testPropertiesFile);
 
         Map<String, TestCase> testCases = createTestCases(properties);
+        if (testCases.size() == 1) {
+            // use classname instead of empty testId in single test scenarios
+            TestCase testCase = testCases.values().iterator().next();
+            String className = testCase.getClassname();
+            if (testCase.getId().isEmpty() && className != null) {
+                String testId = className.substring(className.lastIndexOf('.') + 1);
+                testCases = singletonMap(testId, new TestCase(testId, testCase.getProperties()));
+            }
+        }
 
-        return createTestSuite(testPropertiesFile, testCases, propertiesOverrideString);
+        return createTestSuite(testPropertiesFile, testCases, propertiesOverrideString, testSuiteId);
     }
 
     @SuppressFBWarnings({"DM_DEFAULT_ENCODING"})
@@ -111,13 +180,17 @@ public class TestSuite implements Serializable {
         Map<String, TestCase> testCases = new HashMap<String, TestCase>();
         for (String property : properties.stringPropertyNames()) {
             String value = (String) properties.get(property);
-            int indexOfAt = property.indexOf('@');
 
+            int indexOfAt = property.indexOf('@');
             String testCaseId = "";
             String field = property;
             if (indexOfAt > -1) {
                 testCaseId = property.substring(0, indexOfAt);
                 field = property.substring(indexOfAt + 1);
+            }
+
+            if (value.isEmpty()) {
+                throw new IllegalArgumentException(format("Value of property %s in testId [%s] is empty!", property, testCaseId));
             }
 
             TestCase testCase = getOrCreateTestCase(testCases, testCaseId);
@@ -141,10 +214,11 @@ public class TestSuite implements Serializable {
         return testCase;
     }
 
-    private static TestSuite createTestSuite(File file, Map<String, TestCase> testCases, String propertiesOverrideString) {
+    private static TestSuite createTestSuite(File file, Map<String, TestCase> testCases, String propertiesOverrideString,
+                                             String testSuiteId) {
         Map<String, String> propertiesOverride = parseProperties(propertiesOverrideString);
 
-        TestSuite testSuite = new TestSuite();
+        TestSuite testSuite = new TestSuite(testSuiteId);
         for (String testcaseId : getTestCaseIds(testCases)) {
             TestCase testcase = testCases.get(testcaseId);
             testcase.override(propertiesOverride);

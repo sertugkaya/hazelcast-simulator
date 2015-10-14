@@ -4,15 +4,58 @@ import com.hazelcast.simulator.utils.BindException;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 import static com.hazelcast.simulator.test.TestSuite.loadTestSuite;
 import static com.hazelcast.simulator.utils.FileUtils.writeText;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class TestSuiteTest {
+
+    @Test
+    public void testConstructor() {
+        TestSuite testSuite = new TestSuite();
+
+        assertNotNull(testSuite.getId());
+        assertTrue(testSuite.getTestCaseList().isEmpty());
+        assertEquals(0, testSuite.getMaxTestCaseIdLength());
+    }
+
+    @Test
+    public void testConstructor_withTestSuiteId() {
+        TestSuite testSuite = new TestSuite("TestSuiteTest");
+
+        assertEquals("TestSuiteTest", testSuite.getId());
+        assertTrue(testSuite.getTestCaseList().isEmpty());
+        assertEquals(0, testSuite.getMaxTestCaseIdLength());
+    }
+
+    @Test
+    public void testSetter() {
+        TestSuite testSuite = new TestSuite();
+
+        assertEquals(0, testSuite.getDurationSeconds());
+        assertFalse(testSuite.isWaitForTestCase());
+        assertFalse(testSuite.isFailFast());
+        assertTrue(testSuite.getTolerableFailures().isEmpty());
+
+        Set<FailureType> tolerableFailures = Collections.singleton(FailureType.NETTY_EXCEPTION);
+        testSuite.setDurationSeconds(23);
+        testSuite.setWaitForTestCase(true);
+        testSuite.setFailFast(true);
+        testSuite.setTolerableFailures(tolerableFailures);
+
+        assertEquals(23, testSuite.getDurationSeconds());
+        assertTrue(testSuite.isWaitForTestCase());
+        assertTrue(testSuite.isFailFast());
+        assertEquals(tolerableFailures, testSuite.getTolerableFailures());
+    }
 
     @Test
     public void loadTestSuite_singleTestWithTestName() throws Exception {
@@ -20,8 +63,8 @@ public class TestSuiteTest {
                 + "atomicLongTest@threadCount=10";
 
         TestSuite testSuite = createTestSuite(txt);
-        assertEquals(1, testSuite.testCaseList.size());
-        TestCase testCase = testSuite.testCaseList.get(0);
+        assertEquals(1, testSuite.size());
+        TestCase testCase = testSuite.getTestCaseList().get(0);
         assertEquals("atomicLongTest", testCase.getId());
         assertEquals("AtomicLong", testCase.getClassname());
         assertEquals("10", testCase.getProperty("threadCount"));
@@ -56,7 +99,7 @@ public class TestSuiteTest {
         TestSuite testSuite = createTestSuite(txt);
         assertEquals(1, testSuite.size());
 
-        TestCase testCase = testSuite.testCaseList.get(0);
+        TestCase testCase = testSuite.getTestCaseList().get(0);
         assertNotNull(testCase);
         assertEquals("AtomicLong", testCase.getClassname());
         assertNotNull(testCase.toString());
@@ -75,6 +118,21 @@ public class TestSuiteTest {
     @Test(expected = BindException.class)
     public void loadTestSuite_missingClassName_withTestCaseId() throws Exception {
         String txt = "TestCase@threadCount=10";
+
+        createTestSuite(txt);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void loadTestSuite_emptyClassName() throws Exception {
+        String txt = "class=";
+
+        createTestSuite(txt);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void loadTestSuite_emptyProperty() throws Exception {
+        String txt = "class=AtomicLong\n"
+                + "threadCount=";
 
         createTestSuite(txt);
     }
@@ -102,7 +160,7 @@ public class TestSuiteTest {
 
     @Test(expected = RuntimeException.class)
     public void propertiesNotFound() throws Exception {
-        loadTestSuite(new File("notFound"), "");
+        loadTestSuite(new File("notFound"), "", null);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -122,12 +180,25 @@ public class TestSuiteTest {
         TestSuite testSuite = createTestSuite(txt, overrideProperties);
         assertEquals(1, testSuite.size());
 
-        TestCase testCase = testSuite.testCaseList.get(0);
+        TestCase testCase = testSuite.getTestCaseList().get(0);
         assertEquals("AtomicLong", testCase.getClassname());
         assertEquals("20", testCase.getProperty("threadCount"));
     }
 
-    static TestSuite createTestSuite(String txt) throws Exception {
+    @Test
+    public void testMaxCaseIdLength() {
+        TestSuite testSuite = new TestSuite();
+        testSuite.addTest(new TestCase("abc"));
+        testSuite.addTest(new TestCase("88888888"));
+        testSuite.addTest(new TestCase(null));
+        testSuite.addTest(new TestCase("abcDEF"));
+        testSuite.addTest(new TestCase(""));
+        testSuite.addTest(new TestCase("four"));
+
+        assertEquals(8, testSuite.getMaxTestCaseIdLength());
+    }
+
+    private static TestSuite createTestSuite(String txt) throws Exception {
         return createTestSuite(txt, "");
     }
 
@@ -136,6 +207,6 @@ public class TestSuiteTest {
         file.deleteOnExit();
         writeText(txt, file);
 
-        return loadTestSuite(file, overrideProperties);
+        return loadTestSuite(file, overrideProperties, null);
     }
 }
