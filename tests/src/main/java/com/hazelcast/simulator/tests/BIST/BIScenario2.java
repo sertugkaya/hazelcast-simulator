@@ -6,7 +6,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
-import com.hazelcast.simulator.probes.probes.impl.HdrProbe;
+import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -40,10 +40,10 @@ public class BIScenario2 {
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
 
-    public HdrProbe indexMapGetLatency;
-    public HdrProbe indexMapSetLatency;
-    public HdrProbe ViopQueueAddLAtency;
-    public HdrProbe totalLatency;
+    public Probe indexMapGetLatency;
+    public Probe indexMapSetLatency;
+    public Probe ViopQueueAddLAtency;
+    public Probe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
@@ -103,7 +103,7 @@ public class BIScenario2 {
             ViopQueueAddLAtency.started();
             viopQueue.add(new MixedObject(value, newValue, key));
             ViopQueueAddLAtency.done();
-            System.out.println("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
+            lastTIPSeqNumAtomicLong.set(new Long(key));
             totalLatency.done();
         }
 

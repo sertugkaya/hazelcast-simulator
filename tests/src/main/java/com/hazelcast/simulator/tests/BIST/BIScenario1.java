@@ -6,8 +6,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
-import com.hazelcast.simulator.probes.probes.IntervalProbe;
-import com.hazelcast.simulator.probes.probes.impl.HdrProbe;
+import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -42,12 +41,11 @@ public class BIScenario1 {
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
 
-    //TODO change from latencyProbe?
-    public HdrProbe tradeMapGetLatency;
-    public HdrProbe tradeMapSetLatency;
-    public HdrProbe bapQueueAddLAtency;
-    public HdrProbe ViopQueueAddLAtency;
-    public HdrProbe totalLatency;
+    public Probe tradeMapGetLatency;
+    public Probe tradeMapSetLatency;
+    public Probe bapQueueAddLAtency;
+    public Probe ViopQueueAddLAtency;
+    public Probe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
@@ -73,11 +71,6 @@ public class BIScenario1 {
 
     @Warmup
     public void warmup() {
-        try {
-            waitClusterSize(LOGGER, testContext.getTargetInstance(), numberOfMembers);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
         Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
@@ -117,7 +110,7 @@ public class BIScenario1 {
             ViopQueueAddLAtency.started();
             viopQueue.add(new MixedObject(value, newValue, key));
             ViopQueueAddLAtency.done();
-            LOGGER.info("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
+            lastTIPSeqNumAtomicLong.set(new Long(key));
             totalLatency.done();
         }
 
