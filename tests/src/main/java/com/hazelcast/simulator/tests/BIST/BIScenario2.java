@@ -6,6 +6,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
+import com.hazelcast.simulator.probes.probes.impl.HdrProbe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -26,7 +27,7 @@ import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
 public class BIScenario2 {
 
     // properties
-    public int keyCount = 5000;
+    public int keyCount = 150000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
     public int numberOfMembers = 2;
 
@@ -38,6 +39,11 @@ public class BIScenario2 {
     private IQueue<MixedObject> viopQueue;
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
+
+    public HdrProbe indexMapGetLatency;
+    public HdrProbe indexMapSetLatency;
+    public HdrProbe ViopQueueAddLAtency;
+    public HdrProbe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
@@ -61,12 +67,6 @@ public class BIScenario2 {
 
     @Warmup(global = true)
     public void warmup() {
-        try {
-            waitClusterSize(LOGGER, testContext.getTargetInstance(), numberOfMembers);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
         Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(indexMap);
         for (int key : keys) {
@@ -91,15 +91,27 @@ public class BIScenario2 {
 
         @Override
         protected void timeStep() {
-            Integer key = randomInt(keyCount);
+            totalLatency.started();
+            Integer key = randomKey();
+            indexMapGetLatency.started();
             SomeObject value = indexMap.get(key);
+            indexMapGetLatency.done();
             SomeObject newValue = doSomething(value);
+            indexMapSetLatency.started();
             indexMap.set(key, newValue);
+            indexMapSetLatency.done();
+            ViopQueueAddLAtency.started();
             viopQueue.add(new MixedObject(value, newValue, key));
+            ViopQueueAddLAtency.done();
             System.out.println("lastTIPSeqNumAtomicLong counter: " + lastTIPSeqNumAtomicLong.incrementAndGet());
+            totalLatency.done();
         }
 
         protected void afterRun() {
+        }
+
+        private Integer randomKey() {
+            return keys[randomInt(keys.length)];
         }
 
     }

@@ -7,6 +7,7 @@ import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.probes.probes.IntervalProbe;
+import com.hazelcast.simulator.probes.probes.impl.HdrProbe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -41,11 +42,12 @@ public class BIScenario1 {
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
 
-    public IntervalProbe tradeMapGetLatency;
-    public IntervalProbe tradeMapSetLatency;
-    public IntervalProbe bapQueueAddLAtency;
-    public IntervalProbe ViopQueueAddLAtency;
-    public IntervalProbe totalLatency;
+    //TODO change from latencyProbe?
+    public HdrProbe tradeMapGetLatency;
+    public HdrProbe tradeMapSetLatency;
+    public HdrProbe bapQueueAddLAtency;
+    public HdrProbe ViopQueueAddLAtency;
+    public HdrProbe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
