@@ -1,5 +1,7 @@
 package com.hazelcast.simulator.tests.BIST;
 
+import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
@@ -13,6 +15,7 @@ import java.util.Random;
  */
 public class SomeObject
         implements IdentifiedDataSerializable {
+    private static final ILogger LOGGER = Logger.getLogger(SomeObject.class);
     private static Random rand = new Random();
     private final static int n = 150000;
 
@@ -43,7 +46,8 @@ public class SomeObject
     public double d13;
     public double d14;
 
-    public SomeObject() {
+    public void populate() {
+        LOGGER.info("populating someobject");
         this.s1 = GeneratorUtils.generateString(1);
         this.s2 = GeneratorUtils.generateString(2);
         this.s3 = GeneratorUtils.generateString(3);

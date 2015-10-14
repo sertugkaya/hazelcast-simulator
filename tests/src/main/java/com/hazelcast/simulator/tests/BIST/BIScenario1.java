@@ -26,6 +26,7 @@ import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
  */
 public class BIScenario1 {
 
+    private final int constLong = 23;
     // properties
     public int keyCount = 150000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
@@ -45,7 +46,6 @@ public class BIScenario1 {
     public Probe tradeMapSetLatency;
     public Probe bapQueueAddLAtency;
     public Probe ViopQueueAddLAtency;
-    public Probe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
@@ -75,6 +75,7 @@ public class BIScenario1 {
         Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
             SomeObject value = new SomeObject();
+            value.populate();
             streamer.pushEntry(key, value);
         }
         streamer.await();
@@ -87,15 +88,11 @@ public class BIScenario1 {
 
     private class Worker extends AbstractMonotonicWorker {
 
-        protected void beforeRun() {
-            if (tradableMap.size() == 0) {
-                throw new RuntimeException("Warmup has not run since the map is not filled correctly, found size: " + tradableMap.size());
-            }
-        }
+        private MixedObject mo1 = new MixedObject();
+        private MixedObject mo2 = new MixedObject();
 
         @Override
         protected void timeStep() {
-            totalLatency.started();
             Integer key = randomKey();
             tradeMapGetLatency.started();
             SomeObject value = tradableMap.get(key);
@@ -104,17 +101,15 @@ public class BIScenario1 {
             tradeMapSetLatency.started();
             tradableMap.set(key, newValue);
             tradeMapSetLatency.done();
+            mo1.setValues(key, value, newValue);
             bapQueueAddLAtency.started();
-            bapQueue.add(new MixedObject(value, newValue, key));
+            bapQueue.add(mo1);
             bapQueueAddLAtency.done();
+            mo2.setValues(key, value, newValue);
             ViopQueueAddLAtency.started();
-            viopQueue.add(new MixedObject(value, newValue, key));
+            viopQueue.add(mo2);
             ViopQueueAddLAtency.done();
-            lastTIPSeqNumAtomicLong.set(new Long(key));
-            totalLatency.done();
-        }
-
-        protected void afterRun() {
+            lastTIPSeqNumAtomicLong.set(constLong);
         }
 
         private Integer randomKey() {

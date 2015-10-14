@@ -17,7 +17,7 @@ public class MixedObject implements IdentifiedDataSerializable {
 
     public MixedObject(SomeObject value, SomeObject newValue, Integer id) {
         this.oldValue = value;
-        this.newValue = value;
+        this.newValue = newValue;
         this.id = id;
     }
 
@@ -55,5 +55,11 @@ public class MixedObject implements IdentifiedDataSerializable {
         newOne.readData(in);
         this.newValue = newOne;
 
+    }
+
+    public void setValues(Integer key, SomeObject oldValue, SomeObject newValue) {
+        this.id = key;
+        this.oldValue = oldValue;
+        this.newValue = newValue;
     }
 }
