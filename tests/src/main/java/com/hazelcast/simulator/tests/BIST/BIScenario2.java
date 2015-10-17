@@ -27,9 +27,8 @@ import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
 public class BIScenario2 {
 
     // properties
-    public int keyCount = 150000;
+    public int keyCount = 50000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
-    public int numberOfMembers = 2;
 
     private TestContext testContext;
     private static final ILogger LOGGER = Logger.getLogger(BIScenario2.class);
@@ -43,14 +42,13 @@ public class BIScenario2 {
     public Probe indexMapGetLatency;
     public Probe indexMapSetLatency;
     public Probe ViopQueueAddLAtency;
-    public Probe totalLatency;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
         LOGGER.info("======== SETUP =========");
         this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
-        indexMap = targetInstance.getMap("TradableMap");
+        indexMap = targetInstance.getMap("IndexMap");
         viopQueue = targetInstance.getQueue("ViopQueue");
         lastTIPSeqNumAtomicLong = targetInstance.getAtomicLong("LastTIPSeqNumAtomicLong");
 
@@ -65,12 +63,13 @@ public class BIScenario2 {
         LOGGER.info("======== THE END =========");
     }
 
-    @Warmup(global = true)
+    @Warmup
     public void warmup() {
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
         Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(indexMap);
         for (int key : keys) {
             SomeObject value = new SomeObject();
+            value.populate();
             streamer.pushEntry(key, value);
         }
         streamer.await();
@@ -83,15 +82,8 @@ public class BIScenario2 {
 
     private class Worker extends AbstractMonotonicWorker {
 
-        protected void beforeRun() {
-            if (indexMap.size() != keyCount) {
-                throw new RuntimeException("Warmup has not run since the map is not filled correctly, found size: " + indexMap.size());
-            }
-        }
-
         @Override
         protected void timeStep() {
-            totalLatency.started();
             Integer key = randomKey();
             indexMapGetLatency.started();
             SomeObject value = indexMap.get(key);
@@ -104,10 +96,6 @@ public class BIScenario2 {
             viopQueue.add(new MixedObject(value, newValue, key));
             ViopQueueAddLAtency.done();
             lastTIPSeqNumAtomicLong.set(new Long(key));
-            totalLatency.done();
-        }
-
-        protected void afterRun() {
         }
 
         private Integer randomKey() {

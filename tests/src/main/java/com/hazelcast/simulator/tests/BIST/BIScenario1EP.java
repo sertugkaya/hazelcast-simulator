@@ -6,6 +6,7 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
+import com.hazelcast.map.EntryProcessor;
 import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
@@ -21,39 +22,53 @@ import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
 
 /**
- * Created by sertugkaya on 10/10/15.
+ * Created by sertugkaya on 09/10/15.
  */
-public class BIScenario3 {
+public class BIScenario1EP {
 
+    private final int constLong = 23;
     // properties
     public int keyCount = 50000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public int numberOfMembers = 2;
 
     private TestContext testContext;
-    private static final ILogger LOGGER = Logger.getLogger(BIScenario3.class);
+    private static final ILogger LOGGER = Logger.getLogger(BIScenario1EP.class);
 
 
-    private IMap<Integer, SomeObject> indexMap;
+    private IMap<Integer, SomeObject> tradableMap;
+    private IQueue<MixedObject> bapQueue;
+    private IQueue<MixedObject> viopQueue;
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
+    private EntryProcessor entryProcessor;
 
-    public Probe indexMapGetLatency;
-    public Probe indexMapSetLatency;
+
+    public Probe bapQueueAddLAtency;
+    public Probe ViopQueueAddLAtency;
+    private SomeObject oneObject;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
         LOGGER.info("======== SETUP =========");
         this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
-        indexMap = targetInstance.getMap("IndexMap");
+        tradableMap = targetInstance.getMap("TradableMap");
+        bapQueue = targetInstance.getQueue("BapQueue");
+        viopQueue = targetInstance.getQueue("ViopQueue");
         lastTIPSeqNumAtomicLong = targetInstance.getAtomicLong("LastTIPSeqNumAtomicLong");
+        oneObject = new SomeObject();
+        oneObject.populate();
+        entryProcessor = new TradableEntryProcessor(oneObject);
 
     }
 
     @Teardown
     public void tearDown() throws Exception {
         LOGGER.info("======== TEAR DOWN =========");
-        indexMap.destroy();
+        tradableMap.destroy();
+        bapQueue.destroy();
+        viopQueue.destroy();
         lastTIPSeqNumAtomicLong.destroy();
         LOGGER.info("======== THE END =========");
     }
@@ -61,7 +76,7 @@ public class BIScenario3 {
     @Warmup
     public void warmup() {
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
-        Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(indexMap);
+        Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
             SomeObject value = new SomeObject();
             value.populate();
@@ -77,17 +92,21 @@ public class BIScenario3 {
 
     private class Worker extends AbstractMonotonicWorker {
 
+        private MixedObject mo1 = new MixedObject();
+
         @Override
         protected void timeStep() {
             Integer key = randomKey();
-            indexMapGetLatency.started();
-            SomeObject value = indexMap.get(key);
-            indexMapGetLatency.done();
-            SomeObject newValue = doSomething(value);
-            indexMapSetLatency.started();
-            indexMap.set(key, newValue);
-            indexMapSetLatency.done();
-            lastTIPSeqNumAtomicLong.set(new Long(key));
+
+            SomeObject so = (SomeObject) tradableMap.executeOnKey(key, entryProcessor);
+            mo1.setValues(key,oneObject, so);
+            bapQueueAddLAtency.started();
+            bapQueue.add(mo1);
+            bapQueueAddLAtency.done();
+            ViopQueueAddLAtency.started();
+            viopQueue.add(mo1);
+            ViopQueueAddLAtency.done();
+            lastTIPSeqNumAtomicLong.set(constLong);
         }
 
         private Integer randomKey() {
@@ -101,9 +120,7 @@ public class BIScenario3 {
     }
 
     public static void main(String[] args) throws Exception {
-        BIScenario3 test = new BIScenario3();
-        new TestRunner<BIScenario3>(test).run();
+        BIScenario1EP test = new BIScenario1EP();
+        new TestRunner<BIScenario1EP>(test).run();
     }
-
-
 }

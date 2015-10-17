@@ -18,7 +18,6 @@ import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 
-import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.waitClusterSize;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKeys;
 
 /**
@@ -28,9 +27,8 @@ public class BIScenario1 {
 
     private final int constLong = 23;
     // properties
-    public int keyCount = 150000;
+    public int keyCount = 50000;
     public KeyLocality keyLocality = KeyLocality.RANDOM;
-    public int numberOfMembers = 2;
 
     private TestContext testContext;
     private static final ILogger LOGGER = Logger.getLogger(BIScenario1.class);
@@ -41,6 +39,7 @@ public class BIScenario1 {
     private IQueue<MixedObject> viopQueue;
     private IAtomicLong lastTIPSeqNumAtomicLong;
     private int[] keys;
+
 
     public Probe tradeMapGetLatency;
     public Probe tradeMapSetLatency;
@@ -56,7 +55,6 @@ public class BIScenario1 {
         bapQueue = targetInstance.getQueue("BapQueue");
         viopQueue = targetInstance.getQueue("ViopQueue");
         lastTIPSeqNumAtomicLong = targetInstance.getAtomicLong("LastTIPSeqNumAtomicLong");
-
     }
 
     @Teardown
@@ -89,11 +87,11 @@ public class BIScenario1 {
     private class Worker extends AbstractMonotonicWorker {
 
         private MixedObject mo1 = new MixedObject();
-        private MixedObject mo2 = new MixedObject();
 
         @Override
         protected void timeStep() {
             Integer key = randomKey();
+
             tradeMapGetLatency.started();
             SomeObject value = tradableMap.get(key);
             tradeMapGetLatency.done();
@@ -102,12 +100,12 @@ public class BIScenario1 {
             tradableMap.set(key, newValue);
             tradeMapSetLatency.done();
             mo1.setValues(key, value, newValue);
+
             bapQueueAddLAtency.started();
             bapQueue.add(mo1);
             bapQueueAddLAtency.done();
-            mo2.setValues(key, value, newValue);
             ViopQueueAddLAtency.started();
-            viopQueue.add(mo2);
+            viopQueue.add(mo1);
             ViopQueueAddLAtency.done();
             lastTIPSeqNumAtomicLong.set(constLong);
         }
