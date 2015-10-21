@@ -2,9 +2,12 @@ package com.hazelcast.simulator.protocol.registry;
 
 import com.hazelcast.simulator.agent.workerjvm.WorkerJvmSettings;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
+import com.hazelcast.simulator.utils.CommandLineExitException;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.Collections.synchronizedList;
@@ -42,6 +45,9 @@ public class ComponentRegistry {
     }
 
     public AgentData getFirstAgent() {
+        if (agents.size() == 0) {
+            throw new CommandLineExitException("No agents running!");
+        }
         return agents.get(0);
     }
 
@@ -49,6 +55,15 @@ public class ComponentRegistry {
         for (WorkerJvmSettings settings : settingsList) {
             WorkerData workerData = new WorkerData(parentAddress, settings);
             workers.add(workerData);
+        }
+    }
+
+    public void removeWorker(SimulatorAddress workerAddress) {
+        for (WorkerData workerData : workers) {
+            if (workerData.getAddress().equals(workerAddress)) {
+                workers.remove(workerData);
+                break;
+            }
         }
     }
 
@@ -65,6 +80,20 @@ public class ComponentRegistry {
     }
 
     public WorkerData getFirstWorker() {
+        if (workers.size() == 0) {
+            throw new CommandLineExitException("No workers running!");
+        }
         return workers.get(0);
+    }
+
+    public Set<SimulatorAddress> getMissingWorkers(Set<SimulatorAddress> finishedWorkers) {
+        Set<SimulatorAddress> missingWorkers = new HashSet<SimulatorAddress>();
+        for (WorkerData worker : workers) {
+            SimulatorAddress workerAddress = worker.getAddress();
+            if (!finishedWorkers.contains(workerAddress)) {
+                missingWorkers.add(workerAddress);
+            }
+        }
+        return missingWorkers;
     }
 }

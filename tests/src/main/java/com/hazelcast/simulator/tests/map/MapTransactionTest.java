@@ -95,14 +95,14 @@ public class MapTransactionTest {
         private final long[] increments = new long[keyCount];
 
         @Override
-        protected void timeStep() {
+        protected void timeStep() throws Exception {
             final int key = randomInt(keyCount);
             final int increment = randomInt(100);
 
             try {
                 targetInstance.executeTransaction(transactionOptions, new TransactionalTask<Object>() {
                     @Override
-                    public Object execute(TransactionalTaskContext txContext) throws TransactionException {
+                    public Object execute(TransactionalTaskContext txContext) {
                         TransactionalMap<Integer, Long> txMap = txContext.getMap(basename);
                         Long value;
                         if (getForUpdate) {

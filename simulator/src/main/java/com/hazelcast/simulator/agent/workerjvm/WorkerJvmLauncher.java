@@ -24,6 +24,7 @@ import static com.hazelcast.simulator.utils.FileUtils.readObject;
 import static com.hazelcast.simulator.utils.FileUtils.writeText;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static com.hazelcast.simulator.utils.NativeUtils.execute;
+import static com.hazelcast.simulator.utils.jars.HazelcastJARs.directoryForVersionSpec;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 
@@ -239,9 +240,10 @@ public class WorkerJvmLauncher {
     }
 
     private void addProfilerSettings(WorkerJvm workerJvm, List<String> args) {
+        String javaExecutable = "java";
         switch (workerJvmSettings.getProfiler()) {
             case YOURKIT:
-                args.add("java");
+                args.add(javaExecutable);
                 String agentSetting = workerJvmSettings.getProfilerSettings()
                         .replace("${SIMULATOR_HOME}", SIMULATOR_HOME.getAbsolutePath())
                         .replace("${WORKER_HOME}", workerJvm.getWorkerHome().getAbsolutePath());
@@ -249,25 +251,26 @@ public class WorkerJvmLauncher {
                 break;
             case FLIGHTRECORDER:
             case HPROF:
-                args.add("java");
+                args.add(javaExecutable);
                 args.add(workerJvmSettings.getProfilerSettings());
                 break;
             case PERF:
             case VTUNE:
                 // perf and vtune command always need to be in front of the java command
                 args.add(workerJvmSettings.getProfilerSettings());
-                args.add("java");
+                args.add(javaExecutable);
                 break;
             default:
-                args.add("java");
+                args.add(javaExecutable);
         }
     }
 
     private String getClasspath() {
-        File libDir = new File(agent.getTestSuiteDir(), "lib");
-        return CLASSPATH + CLASSPATH_SEPARATOR
-                + SIMULATOR_HOME + "/user-lib/*" + CLASSPATH_SEPARATOR
-                + new File(libDir, "*").getAbsolutePath();
+        String hzVersionDirectory = directoryForVersionSpec(workerJvmSettings.getHazelcastVersionSpec());
+        return CLASSPATH
+                + CLASSPATH_SEPARATOR + SIMULATOR_HOME + "/hz-lib/" + hzVersionDirectory + "/*"
+                + CLASSPATH_SEPARATOR + SIMULATOR_HOME + "/user-lib/*"
+                + CLASSPATH_SEPARATOR + new File(agent.getTestSuiteDir(), "lib/*").getAbsolutePath();
     }
 
     private List<String> getJvmOptions() {

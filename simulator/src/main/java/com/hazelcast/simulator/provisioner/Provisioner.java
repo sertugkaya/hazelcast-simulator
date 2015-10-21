@@ -8,6 +8,7 @@ import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.utils.CommandLineExitException;
 import com.hazelcast.simulator.utils.ThreadSpawner;
+import com.hazelcast.simulator.utils.jars.HazelcastJARs;
 import com.hazelcast.util.EmptyStatement;
 import org.apache.log4j.Logger;
 import org.jclouds.compute.ComputeService;
@@ -24,7 +25,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import static com.hazelcast.simulator.provisioner.ProvisionerUtils.getHazelcastJars;
 import static com.hazelcast.simulator.provisioner.ProvisionerUtils.getInitScriptFile;
 import static com.hazelcast.simulator.utils.CommonUtils.exitWithError;
 import static com.hazelcast.simulator.utils.CommonUtils.getSimulatorVersion;
@@ -44,6 +44,8 @@ public final class Provisioner {
     private static final int MACHINE_WARMUP_WAIT_SECONDS = 10;
     private static final int EXECUTOR_TERMINATION_TIMEOUT_SECONDS = 10;
 
+    private static final String INDENTATION = "    ";
+
     private static final String SIMULATOR_HOME = getSimulatorHome().getAbsolutePath();
 
     private static final Logger LOGGER = Logger.getLogger(Provisioner.class);
@@ -57,7 +59,7 @@ public final class Provisioner {
     private final Bash bash;
 
     private final File initScriptFile;
-    private final HazelcastJars hazelcastJars;
+    private final HazelcastJARs hazelcastJARs;
 
     private ComputeService compute;
 
@@ -67,7 +69,7 @@ public final class Provisioner {
         this.bash = new Bash(props);
 
         this.initScriptFile = getInitScriptFile(SIMULATOR_HOME);
-        this.hazelcastJars = getHazelcastJars(bash, props);
+        this.hazelcastJARs = HazelcastJARs.newInstance(bash, props);
     }
 
     void scale(int size, boolean enterpriseEnabled) {
@@ -88,7 +90,7 @@ public final class Provisioner {
 
     void installSimulator(boolean enableEnterprise) {
         echoImportant("Installing Simulator on %s machines", componentRegistry.agentCount());
-        hazelcastJars.prepare(enableEnterprise);
+        hazelcastJARs.prepare(enableEnterprise);
 
         ThreadSpawner spawner = new ThreadSpawner("installSimulator", true);
         for (final AgentData agentData : componentRegistry.getAgents()) {
@@ -108,7 +110,7 @@ public final class Provisioner {
     void listMachines() {
         echo("Provisioned machines (from " + AgentsFile.NAME + "):");
         String machines = fileAsText(agentsFile);
-        echo("    " + machines);
+        echo(INDENTATION + machines);
     }
 
     void download(final String target) {
@@ -243,7 +245,7 @@ public final class Provisioner {
             LOGGER.info(format("JDK spec: %s %s", jdkFlavor, jdkVersion));
         }
 
-        hazelcastJars.prepare(enterpriseEnabled);
+        hazelcastJARs.prepare(enterpriseEnabled);
 
         compute = new ComputeServiceBuilder(props).build();
         echo("Created compute");
@@ -261,7 +263,7 @@ public final class Provisioner {
                     String privateIpAddress = node.getPrivateAddresses().iterator().next();
                     String publicIpAddress = node.getPublicAddresses().iterator().next();
 
-                    echo("    " + publicIpAddress + " LAUNCHED");
+                    echo(INDENTATION + publicIpAddress + " LAUNCHED");
                     appendText(publicIpAddress + "," + privateIpAddress + "\n", agentsFile);
 
                     componentRegistry.addAgent(publicIpAddress, privateIpAddress);
@@ -339,9 +341,6 @@ public final class Provisioner {
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/lib/tests-*", "lib");
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/lib/utils-*", "lib");
 
-        // upload Hazelcast JARs
-        bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/lib/hazelcast*", "lib");
-
         // we don't copy all JARs to the agent to increase upload speed, e.g. YourKit is uploaded on demand by the Coordinator
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/lib/cache-api*", "lib");
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/lib/commons-codec*", "lib");
@@ -361,22 +360,12 @@ public final class Provisioner {
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/tests/", "tests");
         bash.uploadToAgentSimulatorDir(ip, SIMULATOR_HOME + "/user-lib/", "user-lib/");
 
+        // upload Hazelcast JARs
+        hazelcastJARs.purge(ip);
+        hazelcastJARs.upload(ip, SIMULATOR_HOME);
+
         String initScript = loadInitScript();
         bash.ssh(ip, initScript);
-
-        String versionSpec = props.getHazelcastVersionSpec();
-        if (!versionSpec.equals("outofthebox")) {
-            // TODO: in the future we can improve this (we upload the Hazelcast JARs, to delete them again)
-
-            // remove the Hazelcast JARs, they will be copied from the 'hazelcastJarsDir'
-            bash.ssh(ip, format("rm -fr hazelcast-simulator-%s/lib/hazelcast-*.jar", getSimulatorVersion()));
-
-            if (!versionSpec.endsWith("bringmyown")) {
-                // upload the actual Hazelcast JARs that are going to be used by the worker
-                bash.scpToRemote(ip, hazelcastJars.getAbsolutePath() + "/*.jar",
-                        format("hazelcast-simulator-%s/lib", getSimulatorVersion()));
-            }
-        }
     }
 
     private String loadInitScript() {
@@ -430,20 +419,20 @@ public final class Provisioner {
         public void run() {
             // install Java if needed
             if (!"outofthebox".equals(props.get("JDK_FLAVOR"))) {
-                echo("    " + ip + " JAVA INSTALLATION STARTED...");
+                echo(INDENTATION + ip + " JAVA INSTALLATION STARTED...");
                 bash.scpToRemote(ip, getJavaSupportScript(), "jdk-support.sh");
                 bash.scpToRemote(ip, getJavaInstallScript(), "install-java.sh");
                 bash.ssh(ip, "bash install-java.sh");
-                echo("    " + ip + " JAVA INSTALLED");
+                echo(INDENTATION + ip + " JAVA INSTALLED");
             }
 
-            echo("    " + ip + " SIMULATOR INSTALLATION STARTED...");
+            echo(INDENTATION + ip + " SIMULATOR INSTALLATION STARTED...");
             installSimulator(ip);
-            echo("    " + ip + " SIMULATOR INSTALLED");
+            echo(INDENTATION + ip + " SIMULATOR INSTALLED");
 
             if (startHarakiriMonitorCommand != null) {
                 bash.ssh(ip, startHarakiriMonitorCommand);
-                echo("    " + ip + " HARAKIRI MONITOR STARTED");
+                echo(INDENTATION + ip + " HARAKIRI MONITOR STARTED");
             }
         }
 
@@ -460,6 +449,7 @@ public final class Provisioner {
             File scriptDir = new File(SIMULATOR_HOME, "jdk-install");
             return new File(scriptDir, "jdk-support.sh");
         }
+
     }
 
     public static void main(String[] args) {

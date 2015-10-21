@@ -16,6 +16,8 @@
 package com.hazelcast.simulator.coordinator;
 
 import com.hazelcast.simulator.common.JavaProfiler;
+import com.hazelcast.simulator.protocol.core.AddressLevel;
+import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.utils.CommandLineExitException;
@@ -36,6 +38,7 @@ import static com.hazelcast.simulator.coordinator.CoordinatorUtils.waitForWorker
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.ReflectionUtils.invokePrivateConstructor;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -171,22 +174,31 @@ public class CoordinatorUtilsTest {
 
     @Test(timeout = 10000)
     public void testWaitForWorkerShutdown() {
-        final ConcurrentHashMap<String, Boolean> finishedWorkers = new ConcurrentHashMap<String, Boolean>();
-        finishedWorkers.put("A", true);
+        final ConcurrentHashMap<SimulatorAddress, Boolean> finishedWorkers = new ConcurrentHashMap<SimulatorAddress, Boolean>();
+        finishedWorkers.put(new SimulatorAddress(AddressLevel.WORKER, 1, 1, 0), true);
 
         ThreadSpawner spawner = new ThreadSpawner("testWaitForFinishedWorker", true);
         spawner.spawn(new Runnable() {
             @Override
             public void run() {
                 sleepSeconds(1);
-                finishedWorkers.put("B", true);
+                finishedWorkers.put(new SimulatorAddress(AddressLevel.WORKER, 1, 2, 0), true);
                 sleepSeconds(1);
-                finishedWorkers.put("C", true);
+                finishedWorkers.put(new SimulatorAddress(AddressLevel.WORKER, 1, 3, 0), true);
             }
         });
 
-        waitForWorkerShutdown(3, finishedWorkers.keySet());
-        spawner.awaitCompletion();
+        boolean success = waitForWorkerShutdown(3, finishedWorkers.keySet(), CoordinatorUtils.FINISHED_WORKER_TIMEOUT_SECONDS);
+        assertTrue(success);
+    }
+
+    @Test(timeout = 10000)
+    public void testWaitForWorkerShutdown_withTimeout() {
+        final ConcurrentHashMap<SimulatorAddress, Boolean> finishedWorkers = new ConcurrentHashMap<SimulatorAddress, Boolean>();
+        finishedWorkers.put(new SimulatorAddress(AddressLevel.WORKER, 1, 1, 0), true);
+
+        boolean success = waitForWorkerShutdown(3, finishedWorkers.keySet(), 1);
+        assertFalse(success);
     }
 
     private void assertAgentMemberLayout(int index, AgentMemberMode mode, int memberCount, int clientCount) {

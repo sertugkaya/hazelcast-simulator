@@ -1,5 +1,7 @@
 package com.hazelcast.simulator.protocol.core;
 
+import static java.lang.Integer.parseInt;
+
 /**
  * Address object which (uniquely) identifies one or more Simulator components.
  *
@@ -189,5 +191,27 @@ public class SimulatorAddress {
             sb.append("_T").append(testIndex == 0 ? "*" : testIndex);
         }
         return sb.toString();
+    }
+
+    public static SimulatorAddress fromString(String sourceString) {
+        String[] sections = sourceString.split("_");
+        AddressLevel addressLevel = AddressLevel.fromInt(sections.length - 1);
+        if (addressLevel == AddressLevel.COORDINATOR) {
+            return COORDINATOR;
+        }
+
+        int agentIndex = getAddressIndex(AddressLevel.COORDINATOR, addressLevel, "A*", sections);
+        int workerIndex = getAddressIndex(AddressLevel.AGENT, addressLevel, "W*", sections);
+        int testIndex = getAddressIndex(AddressLevel.WORKER, addressLevel, "T*", sections);
+
+        return new SimulatorAddress(addressLevel, agentIndex, workerIndex, testIndex);
+    }
+
+    private static int getAddressIndex(AddressLevel parentLevel, AddressLevel level, String wildcard, String[] sections) {
+        if (!parentLevel.isParentAddressLevel(level)) {
+            return 0;
+        }
+        int sectionsIndex = parentLevel.toInt() + 1;
+        return wildcard.equals(sections[sectionsIndex]) ? 0 : parseInt(sections[sectionsIndex].substring(1));
     }
 }

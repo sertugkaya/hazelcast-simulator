@@ -1,6 +1,8 @@
 package com.hazelcast.simulator.coordinator;
 
+import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.operation.FailureOperation;
+import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.test.FailureType;
 import org.apache.log4j.Logger;
 
@@ -22,12 +24,15 @@ public class FailureContainer {
     private static final Logger LOGGER = Logger.getLogger(FailureContainer.class);
 
     private final BlockingQueue<FailureOperation> failureOperations = new LinkedBlockingQueue<FailureOperation>();
-    private final ConcurrentMap<String, FailureType> finishedWorkersList = new ConcurrentHashMap<String, FailureType>();
+    private final ConcurrentMap<SimulatorAddress, FailureType> finishedWorkersList
+            = new ConcurrentHashMap<SimulatorAddress, FailureType>();
 
     private final File file;
+    private final ComponentRegistry componentRegistry;
 
-    public FailureContainer(String testSuiteId) {
+    public FailureContainer(String testSuiteId, ComponentRegistry componentRegistry) {
         this.file = new File("failures-" + testSuiteId + ".txt");
+        this.componentRegistry = componentRegistry;
     }
 
     public int getFailureCount() {
@@ -47,14 +52,16 @@ public class FailureContainer {
         return failureOperations;
     }
 
-    public Set<String> getFinishedWorkers() {
+    public Set<SimulatorAddress> getFinishedWorkers() {
         return finishedWorkersList.keySet();
     }
 
     public void addFailureOperation(FailureOperation operation) {
         FailureType failureType = operation.getType();
         if (failureType.isWorkerFinishedFailure()) {
-            finishedWorkersList.put(operation.getWorkerAddress(), failureType);
+            SimulatorAddress workerAddress = operation.getWorkerAddress();
+            finishedWorkersList.put(workerAddress, failureType);
+            componentRegistry.removeWorker(workerAddress);
         }
         if (failureType.isPoisonPill()) {
             return;
@@ -62,7 +69,7 @@ public class FailureContainer {
 
         failureOperations.add(operation);
 
-        LOGGER.warn(operation.getLogMessage(failureOperations.size()));
+        LOGGER.error(operation.getLogMessage(failureOperations.size()));
         appendText(operation.getFileMessage(), file);
     }
 }

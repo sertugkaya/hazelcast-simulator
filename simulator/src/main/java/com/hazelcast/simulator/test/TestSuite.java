@@ -16,6 +16,7 @@
 package com.hazelcast.simulator.test;
 
 import com.hazelcast.simulator.utils.BindException;
+import com.hazelcast.simulator.utils.CommandLineExitException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.File;
@@ -53,10 +54,6 @@ public class TestSuite {
 
     public TestSuite(String testSuiteId) {
         id = (testSuiteId == null) ? createId() : testSuiteId;
-    }
-
-    public String createId() {
-        return new SimpleDateFormat("yyyy-MM-dd__HH_mm_ss").format(new Date());
     }
 
     public String getId() {
@@ -170,7 +167,7 @@ public class TestSuite {
 
             return properties;
         } catch (IOException e) {
-            throw new RuntimeException(format("Failed to load testsuite property file [%s]", file.getAbsolutePath()), e);
+            throw new CommandLineExitException(format("Failed to load testsuite property file [%s]", file.getAbsolutePath()), e);
         } finally {
             closeQuietly(reader);
         }
@@ -260,5 +257,9 @@ public class TestSuite {
         List<String> testcaseIds = new LinkedList<String>(testCases.keySet());
         Collections.sort(testcaseIds);
         return testcaseIds;
+    }
+
+    private static String createId() {
+        return new SimpleDateFormat("yyyy-MM-dd__HH_mm_ss").format(new Date());
     }
 }

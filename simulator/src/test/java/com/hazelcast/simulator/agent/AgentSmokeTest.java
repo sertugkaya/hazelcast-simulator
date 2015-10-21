@@ -9,7 +9,6 @@ import com.hazelcast.simulator.coordinator.PerformanceStateContainer;
 import com.hazelcast.simulator.coordinator.RemoteClient;
 import com.hazelcast.simulator.coordinator.TestHistogramContainer;
 import com.hazelcast.simulator.coordinator.WorkerParameters;
-import com.hazelcast.simulator.coordinator.remoting.AgentsClient;
 import com.hazelcast.simulator.protocol.connector.CoordinatorConnector;
 import com.hazelcast.simulator.protocol.operation.CreateTestOperation;
 import com.hazelcast.simulator.protocol.operation.FailureOperation;
@@ -55,7 +54,6 @@ public class AgentSmokeTest {
 
     private static String userDir;
     private static AgentStarter agentStarter;
-    private static AgentsClient agentsClient;
 
     private static FailureContainer failureContainer;
 
@@ -75,14 +73,10 @@ public class AgentSmokeTest {
         componentRegistry.addAgent(AGENT_IP_ADDRESS, AGENT_IP_ADDRESS);
 
         agentStarter = new AgentStarter();
-        agentStarter.start();
-
-        agentsClient = new AgentsClient(componentRegistry.getAgents());
-        agentsClient.start();
 
         PerformanceStateContainer performanceStateContainer = new PerformanceStateContainer();
         TestHistogramContainer testHistogramContainer = new TestHistogramContainer(performanceStateContainer);
-        failureContainer = new FailureContainer("agentSmokeTest");
+        failureContainer = new FailureContainer("agentSmokeTest", null);
 
         coordinatorConnector = new CoordinatorConnector(performanceStateContainer, testHistogramContainer, failureContainer);
         coordinatorConnector.addAgent(1, AGENT_IP_ADDRESS, AGENT_PORT);
@@ -93,23 +87,17 @@ public class AgentSmokeTest {
     @AfterClass
     public static void tearDown() throws Exception {
         try {
-            try {
-                try {
-                    LOGGER.info("Shutdown of CoordinatorConnector...");
-                    coordinatorConnector.shutdown();
-                } finally {
-                    LOGGER.info("Shutdown of AgentsClient...");
-                    agentsClient.shutdown();
-                }
-            } finally {
-                LOGGER.info("Shutdown of Agent...");
-                agentStarter.stop();
-            }
+            LOGGER.info("Shutdown of CoordinatorConnector...");
+            coordinatorConnector.shutdown();
+
+            LOGGER.info("Shutdown of Agent...");
+            agentStarter.shutdown();
         } finally {
             Hazelcast.shutdownAll();
 
             System.setProperty("user.dir", userDir);
 
+            deleteQuiet(new File("./dist/src/main/dist/workers"));
             deleteQuiet(new File("./logs"));
             deleteQuiet(new File("./workers"));
             deleteQuiet(new File("./failures-agentSmokeTest.txt"));
@@ -228,14 +216,13 @@ public class AgentSmokeTest {
         private final CountDownLatch latch = new CountDownLatch(1);
         private final AgentThread agentThread = new AgentThread();
 
-        private void start() throws Exception {
+        public AgentStarter() throws Exception {
             agentThread.start();
             latch.await();
         }
 
-        private void stop() throws Exception {
+        private void shutdown() throws Exception {
             agentThread.shutdown();
-            agentThread.interrupt();
             agentThread.join();
         }
 
@@ -252,7 +239,7 @@ public class AgentSmokeTest {
                 latch.countDown();
             }
 
-            private void shutdown() {
+            private void shutdown() throws Exception {
                 agent.shutdown();
             }
         }

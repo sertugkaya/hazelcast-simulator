@@ -17,6 +17,7 @@ package com.hazelcast.simulator.coordinator;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.XmlConfigBuilder;
+import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.test.TestPhase;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hazelcast.simulator.utils.CommonUtils.closeQuietly;
@@ -39,7 +41,8 @@ import static java.lang.String.format;
 
 final class CoordinatorUtils {
 
-    private static final int FINISHED_WORKERS_SLEEP_MILLIS = 500;
+    public static final int FINISHED_WORKER_TIMEOUT_SECONDS = 60;
+    public static final int FINISHED_WORKERS_SLEEP_MILLIS = 500;
 
     private static final Logger LOGGER = Logger.getLogger(CoordinatorUtils.class);
 
@@ -161,11 +164,19 @@ final class CoordinatorUtils {
         return testPhaseSyncMap;
     }
 
-    static void waitForWorkerShutdown(int expectedFinishedWorkerCount, Set<String> finishedWorkers) {
-        LOGGER.info(format("Waiting for shutdown of %d workers...", expectedFinishedWorkerCount));
-        while (finishedWorkers.size() < expectedFinishedWorkerCount) {
+    static boolean waitForWorkerShutdown(int expectedFinishedWorkerCount, Set<SimulatorAddress> finishedWorkers,
+                                         int timeoutSeconds) {
+        LOGGER.info(format("Waiting %d seconds for shutdown of %d workers...", expectedFinishedWorkerCount, timeoutSeconds));
+        long timeoutTimestamp = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds);
+        while (finishedWorkers.size() < expectedFinishedWorkerCount && System.currentTimeMillis() < timeoutTimestamp) {
             sleepMillis(FINISHED_WORKERS_SLEEP_MILLIS);
         }
+        int remainingWorkers = expectedFinishedWorkerCount - finishedWorkers.size();
+        if (remainingWorkers > 0) {
+            LOGGER.warn(format("Aborted waiting for shutdown of all workers (%d still running)...", remainingWorkers));
+            return false;
+        }
         LOGGER.info("Shutdown of all workers completed...");
+        return true;
     }
 }

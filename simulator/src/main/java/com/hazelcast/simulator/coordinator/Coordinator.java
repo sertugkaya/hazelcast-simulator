@@ -18,8 +18,8 @@ package com.hazelcast.simulator.coordinator;
 import com.hazelcast.simulator.common.GitInfo;
 import com.hazelcast.simulator.common.JavaProfiler;
 import com.hazelcast.simulator.common.SimulatorProperties;
-import com.hazelcast.simulator.coordinator.remoting.AgentsClient;
 import com.hazelcast.simulator.protocol.connector.CoordinatorConnector;
+import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.provisioner.Bash;
@@ -33,12 +33,14 @@ import org.apache.log4j.Logger;
 import java.io.File;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.simulator.coordinator.CoordinatorUtils.FINISHED_WORKER_TIMEOUT_SECONDS;
 import static com.hazelcast.simulator.coordinator.CoordinatorUtils.getTestPhaseSyncMap;
 import static com.hazelcast.simulator.coordinator.CoordinatorUtils.initMemberLayout;
 import static com.hazelcast.simulator.coordinator.CoordinatorUtils.waitForWorkerShutdown;
@@ -65,6 +67,8 @@ public final class Coordinator {
     private static final int TEST_CASE_RUNNER_SLEEP_PERIOD_SECONDS = 10;
     private static final int PARALLEL_EXECUTOR_TERMINATION_TIMEOUT_SECONDS = 10;
 
+    private static final String HORIZONTAL_RULER = "----------------------------------------------------------------------------";
+
     private static final Logger LOGGER = Logger.getLogger(Coordinator.class);
 
     private final PerformanceStateContainer performanceStateContainer = new PerformanceStateContainer();
@@ -74,16 +78,15 @@ public final class Coordinator {
     private final ClusterLayoutParameters clusterLayoutParameters;
     private final WorkerParameters workerParameters;
     private final TestSuite testSuite;
-    private final FailureContainer failureContainer;
 
     private final int testCaseRunnerSleepPeriodSeconds;
 
     private final ComponentRegistry componentRegistry;
+    private final FailureContainer failureContainer;
 
     private final SimulatorProperties props;
     private final Bash bash;
 
-    private AgentsClient agentsClient;
     private RemoteClient remoteClient;
     private CoordinatorConnector coordinatorConnector;
 
@@ -100,11 +103,11 @@ public final class Coordinator {
         this.clusterLayoutParameters = clusterLayoutParameters;
         this.workerParameters = workerParameters;
         this.testSuite = testSuite;
-        this.failureContainer = new FailureContainer(testSuite.getId());
 
         this.testCaseRunnerSleepPeriodSeconds = testCaseRunnerSleepPeriodSeconds;
 
         this.componentRegistry = loadComponentRegister(coordinatorParameters.getAgentsFile());
+        this.failureContainer = new FailureContainer(testSuite.getId(), componentRegistry);
 
         this.props = coordinatorParameters.getSimulatorProperties();
         this.bash = new Bash(props);
@@ -167,24 +170,16 @@ public final class Coordinator {
             parallelExecutor.awaitTermination(PARALLEL_EXECUTOR_TERMINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         }
 
-        if (agentsClient != null) {
-            LOGGER.info("Shutdown of AgentsClient...");
-            agentsClient.shutdown();
-        }
-
         if (coordinatorConnector != null) {
             LOGGER.info("Shutdown of ClientConnector...");
             coordinatorConnector.shutdown();
         }
 
-        killAgents();
+        stopAgents();
     }
 
     private void initAgents() {
         startAgents();
-
-        agentsClient = new AgentsClient(componentRegistry.getAgents());
-        agentsClient.start();
 
         try {
             startCoordinatorConnector();
@@ -233,6 +228,8 @@ public final class Coordinator {
         }
         bash.ssh(ip, format("nohup hazelcast-simulator-%s/bin/agent %s%s > agent.out 2> agent.err < /dev/null &",
                 getSimulatorVersion(), mandatoryParameters, optionalParameters));
+
+        bash.ssh(ip, format("hazelcast-simulator-%s/bin/.await-file-exists agent.pid", getSimulatorVersion()));
     }
 
     private void startCoordinatorConnector() {
@@ -358,8 +355,7 @@ public final class Coordinator {
     void runTestSuite() {
         echo("Starting testsuite: %s", testSuite.getId());
         echo("Tests in testsuite: %s", testSuite.size());
-        echo("Running time per test: %s ", secondsToHuman(testSuite.getDurationSeconds()));
-        echo("Expected total testsuite time: %s", secondsToHuman(testSuite.size() * testSuite.getDurationSeconds()));
+        logTestSuiteDuration();
 
         long started = System.nanoTime();
 
@@ -370,7 +366,10 @@ public final class Coordinator {
         }
 
         remoteClient.terminateWorkers();
-        waitForWorkerShutdown(componentRegistry.workerCount(), failureContainer.getFinishedWorkers());
+        Set<SimulatorAddress> finishedWorkers = failureContainer.getFinishedWorkers();
+        if (!waitForWorkerShutdown(componentRegistry.workerCount(), finishedWorkers, FINISHED_WORKER_TIMEOUT_SECONDS)) {
+            LOGGER.warn(format("Unfinished workers: %s", componentRegistry.getMissingWorkers(finishedWorkers).toString()));
+        }
 
         performanceStateContainer.logDetailedPerformanceInfo();
         for (TestCase testCase : testSuite.getTestCaseList()) {
@@ -379,6 +378,21 @@ public final class Coordinator {
 
         long duration = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started);
         LOGGER.info(format("Total running time: %s seconds", duration));
+    }
+
+    private void logTestSuiteDuration() {
+        int testDuration = testSuite.getDurationSeconds();
+        if (testDuration > 0) {
+            echo("Running time per test: %s ", secondsToHuman(testDuration));
+            int totalDuration = (coordinatorParameters.isParallel()) ? testSuite.size() * testDuration : testDuration;
+            if (testSuite.isWaitForTestCase()) {
+                echo("Testsuite will run until tests are finished for a maximum time of:  %s", secondsToHuman(totalDuration));
+            } else {
+                echo("Expected total testsuite time: %s", secondsToHuman(totalDuration));
+            }
+        } else if (testSuite.isWaitForTestCase()) {
+            echo("Testsuite will run until tests are finished");
+        }
     }
 
     private void runParallel() {
@@ -405,7 +419,7 @@ public final class Coordinator {
                             // FIXME: we should abort here as logged
                         }
                     } catch (Exception e) {
-                        throw new RuntimeException(e);
+                        throw new CommandLineExitException(e);
                     }
                 }
             });
@@ -442,37 +456,38 @@ public final class Coordinator {
     private void logFailureInfo() {
         int failureCount = failureContainer.getFailureCount();
         if (failureCount > 0) {
-            LOGGER.fatal("-----------------------------------------------------------------------------");
+            LOGGER.fatal(HORIZONTAL_RULER);
             LOGGER.fatal(failureCount + " failures have been detected!!!");
-            LOGGER.fatal("-----------------------------------------------------------------------------");
+            LOGGER.fatal(HORIZONTAL_RULER);
             throw new CommandLineExitException(failureCount + " failures have been detected");
         }
-        LOGGER.info("-----------------------------------------------------------------------------");
+        LOGGER.info(HORIZONTAL_RULER);
         LOGGER.info("No failures have been detected!");
-        LOGGER.info("-----------------------------------------------------------------------------");
+        LOGGER.info(HORIZONTAL_RULER);
     }
 
-    private void killAgents() {
+    private void stopAgents() {
         ThreadSpawner spawner = new ThreadSpawner("killAgents", true);
         final String startHarakiriMonitorCommand = getStartHarakiriMonitorCommandOrNull(props);
 
-        echoLocal("Killing %s Agents", componentRegistry.agentCount());
+        echoLocal("Stopping %s Agents", componentRegistry.agentCount());
         for (final AgentData agentData : componentRegistry.getAgents()) {
             spawner.spawn(new Runnable() {
                 @Override
                 public void run() {
-                    echoLocal("Killing Agent %s", agentData.getPublicAddress());
-                    bash.killAllJavaProcesses(agentData.getPublicAddress());
+                    String ip = agentData.getPublicAddress();
+                    echoLocal("Stopping Agent %s", ip);
+                    bash.ssh(ip, format("hazelcast-simulator-%s/bin/.kill-from-pid-file agent.pid", getSimulatorVersion()));
 
                     if (startHarakiriMonitorCommand != null) {
-                        LOGGER.info(format("Starting HarakiriMonitor on %s", agentData.getPublicAddress()));
-                        bash.ssh(agentData.getPublicAddress(), startHarakiriMonitorCommand);
+                        LOGGER.info(format("Starting HarakiriMonitor on %s", ip));
+                        bash.ssh(ip, startHarakiriMonitorCommand);
                     }
                 }
             });
         }
         spawner.awaitCompletion();
-        echoLocal("Successfully killed %s Agents", componentRegistry.agentCount());
+        echoLocal("Successfully stopped %s Agents", componentRegistry.agentCount());
     }
 
     private void echoLocal(String msg, Object... args) {
