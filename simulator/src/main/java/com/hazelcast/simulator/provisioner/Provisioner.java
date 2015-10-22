@@ -34,6 +34,7 @@ import static com.hazelcast.simulator.utils.FileUtils.appendText;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
 import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static com.hazelcast.simulator.utils.FileUtils.rename;
+import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static com.hazelcast.simulator.utils.FormatUtils.secondsToHuman;
 import static com.hazelcast.simulator.utils.HarakiriMonitorUtils.getStartHarakiriMonitorCommandOrNull;
 import static com.hazelcast.simulator.utils.SimulatorUtils.loadComponentRegister;
@@ -142,8 +143,8 @@ public final class Provisioner {
             @Override
             public void run() {
                 String rsyncCommandSuffix = format(baseCommand, "--backup --suffix=-%s ", sshOptions, sshUser, target);
-                File agentOut = new File(target + "/agent.out");
-                File agentErr = new File(target + "/agent.err");
+                File agentOut = new File(target, "agent.out");
+                File agentErr = new File(target, "agent.err");
 
                 for (AgentData agentData : componentRegistry.getAgents()) {
                     String agentAddress = agentData.getPublicAddress();
@@ -152,10 +153,9 @@ public final class Provisioner {
                     bash.executeQuiet(format(rsyncCommandSuffix, agentAddress, agentAddress, "agent.out"));
                     bash.executeQuiet(format(rsyncCommandSuffix, agentAddress, agentAddress, "agent.err"));
 
-                    rename(agentOut, new File(target + "/" + agentAddress + "-agent.out"));
-                    rename(agentErr, new File(target + "/" + agentAddress + "-agent.err"));
+                    rename(agentOut, new File(target, agentAddress + "-agent.out"));
+                    rename(agentErr, new File(target, agentAddress + "-agent.err"));
                 }
-
             }
         });
 
@@ -264,7 +264,7 @@ public final class Provisioner {
                     String publicIpAddress = node.getPublicAddresses().iterator().next();
 
                     echo(INDENTATION + publicIpAddress + " LAUNCHED");
-                    appendText(publicIpAddress + "," + privateIpAddress + "\n", agentsFile);
+                    appendText(publicIpAddress + ',' + privateIpAddress + NEW_LINE, agentsFile);
 
                     componentRegistry.addAgent(publicIpAddress, privateIpAddress);
                 }
@@ -320,12 +320,12 @@ public final class Provisioner {
 
         if (destroyedCount != count) {
             throw new IllegalStateException("Terminated " + destroyedCount + " of " + count
-                    + "\n1) You are trying to terminate physical hardware that you own (unsupported feature)"
-                    + "\n2) If and only if you are using AWS our Harakiri Monitor might have terminated them"
-                    + "\n3) You have not payed you bill and your instances have been terminated by your cloud provider"
-                    + "\n4) You have terminated your own instances (perhaps via some console interface)"
-                    + "\n5) Someone else has terminated your instances"
-                    + "\nPlease try again!");
+                    + NEW_LINE + "1) You are trying to terminate physical hardware that you own (unsupported feature)"
+                    + NEW_LINE + "2) If and only if you are using AWS our Harakiri Monitor might have terminated them"
+                    + NEW_LINE + "3) You have not payed you bill and your instances have been terminated by your cloud provider"
+                    + NEW_LINE + "4) You have terminated your own instances (perhaps via some console interface)"
+                    + NEW_LINE + "5) Someone else has terminated your instances"
+                    + NEW_LINE + "Please try again!");
         }
     }
 
@@ -440,7 +440,7 @@ public final class Provisioner {
             String flavor = props.get("JDK_FLAVOR");
             String version = props.get("JDK_VERSION");
 
-            String script = "jdk-" + flavor + "-" + version + "-64.sh";
+            String script = "jdk-" + flavor + '-' + version + "-64.sh";
             File scriptDir = new File(SIMULATOR_HOME, "jdk-install");
             return new File(scriptDir, script);
         }

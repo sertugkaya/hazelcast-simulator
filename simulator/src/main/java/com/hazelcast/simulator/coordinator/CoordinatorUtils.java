@@ -53,10 +53,7 @@ final class CoordinatorUtils {
         StringBuilder members = new StringBuilder();
         for (AgentData agentData : componentRegistry.getAgents()) {
             String hostAddress = agentData.getPrivateAddress();
-            members.append("<").append(tagName).append(">")
-                    .append(hostAddress)
-                    .append(":").append(port)
-                    .append("</").append(tagName).append(">\n");
+            members.append(format("<%s>%s:%d</%s>%n", tagName, hostAddress, port, tagName));
         }
         return members.toString();
     }

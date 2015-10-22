@@ -4,6 +4,7 @@ import com.hazelcast.client.impl.HazelcastClientProxy;
 import com.hazelcast.client.proxy.PartitionServiceProxy;
 import com.hazelcast.client.spi.ClientInvocationService;
 import com.hazelcast.client.spi.ClientPartitionService;
+import com.hazelcast.client.spi.impl.ClientInvocation;
 import com.hazelcast.core.ExecutionCallback;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
@@ -113,6 +114,10 @@ public class SyntheticTest {
         private long iteration;
 
         public Worker() {
+            if (isClient(targetInstance)) {
+                throw new IllegalArgumentException("SyntheticTest doesn't support clients at the moment");
+            }
+
             isClient = isClient(targetInstance);
             checkClientKeyLocality();
 
@@ -184,10 +189,13 @@ public class SyntheticTest {
         private ICompletableFuture<Object> invokeOnNextPartition() throws Exception {
             int partitionId = nextPartitionId();
             if (isClient) {
+                // FIXME: we have to create an invocation instead of a request
                 SyntheticRequest request = new SyntheticRequest(syncBackupCount, asyncBackupCount, backupDelayNanos);
                 request.setLocalPartitionId(partitionId);
+                ClientInvocation invocation = new ClientInvocation(null, null);
                 Address target = clientPartitionService.getPartitionOwner(partitionId);
-                return clientInvocationService.invokeOnTarget(request, target);
+                // FIXME: the new invokeOnTarget is void, so we don't get a future here!
+                clientInvocationService.invokeOnTarget(invocation, target);
             }
             SyntheticOperation operation = new SyntheticOperation(syncBackupCount, asyncBackupCount, getBackupDelayNanos());
             return operationService.invokeOnPartition(serviceName, operation, partitionId);

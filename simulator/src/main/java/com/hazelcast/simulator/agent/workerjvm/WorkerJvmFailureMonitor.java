@@ -37,11 +37,12 @@ import static com.hazelcast.simulator.test.FailureType.WORKER_TIMEOUT;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
+import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static java.lang.String.format;
 
 public class WorkerJvmFailureMonitor {
 
-    private static final long LAST_SEEN_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30);
+    private static final int LAST_SEEN_TIMEOUT_SECONDS = 30;
 
     private static final Logger LOGGER = Logger.getLogger(WorkerJvmFailureMonitor.class);
 
@@ -96,7 +97,8 @@ public class WorkerJvmFailureMonitor {
                 return;
             }
             detectOomeFailure(workerJvm);
-            detectInactivity(workerJvm);
+            // FIXME: until the worker response is detected properly we will disable this check
+            //detectInactivity(workerJvm);
             detectUnexpectedExit(workerJvm);
         }
 
@@ -114,7 +116,7 @@ public class WorkerJvmFailureMonitor {
             for (File exceptionFile : exceptionFiles) {
                 String content = fileAsText(exceptionFile);
 
-                int indexOf = content.indexOf('\n');
+                int indexOf = content.indexOf(NEW_LINE);
                 String testId = content.substring(0, indexOf);
                 String cause = content.substring(indexOf + 1);
 
@@ -156,7 +158,7 @@ public class WorkerJvmFailureMonitor {
 
         private void detectInactivity(WorkerJvm workerJvm) {
             long elapsed = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - workerJvm.getLastSeen());
-            if (elapsed > LAST_SEEN_TIMEOUT_MILLIS) {
+            if (elapsed > LAST_SEEN_TIMEOUT_SECONDS) {
                 sendFailureOperation(format("Worker has not sent a message for %d seconds", elapsed), WORKER_TIMEOUT, workerJvm);
             }
         }
