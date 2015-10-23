@@ -1,9 +1,12 @@
 package com.hazelcast.simulator.protocol.configuration;
 
 import com.hazelcast.simulator.protocol.connector.ServerConnector;
+import com.hazelcast.simulator.protocol.core.ConnectionManager;
 import com.hazelcast.simulator.protocol.core.ResponseFuture;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
-import com.hazelcast.simulator.protocol.handler.ChannelCollectorHandler;
+import com.hazelcast.simulator.protocol.core.TestProcessorManager;
+import com.hazelcast.simulator.protocol.handler.ConnectionListenerHandler;
+import com.hazelcast.simulator.protocol.handler.ConnectionValidationHandler;
 import com.hazelcast.simulator.protocol.handler.ExceptionHandler;
 import com.hazelcast.simulator.protocol.handler.MessageConsumeHandler;
 import com.hazelcast.simulator.protocol.handler.MessageEncoder;
@@ -23,48 +26,49 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class WorkerServerConfiguration extends AbstractServerConfiguration {
 
+    private final OperationProcessor processor;
+    private final ConnectionManager connectionManager;
     private final SimulatorAddress localAddress;
 
-    private final ChannelCollectorHandler channelCollectorHandler;
-    private final MessageConsumeHandler messageConsumeHandler;
-    private final MessageTestConsumeHandler messageTestConsumeHandler;
+    private final TestProcessorManager testProcessorManager;
 
     public WorkerServerConfiguration(OperationProcessor processor, ConcurrentMap<String, ResponseFuture> futureMap,
-                                     SimulatorAddress localAddress, int port) {
+                                     ConnectionManager connectionManager, SimulatorAddress localAddress, int port) {
         super(processor, futureMap, localAddress, port);
+        this.processor = processor;
+        this.connectionManager = connectionManager;
         this.localAddress = localAddress;
 
-        this.channelCollectorHandler = new ChannelCollectorHandler();
-        this.messageConsumeHandler = new MessageConsumeHandler(localAddress, processor);
-        this.messageTestConsumeHandler = new MessageTestConsumeHandler(localAddress);
+        this.testProcessorManager = new TestProcessorManager(localAddress);
     }
 
     @Override
     public ChannelGroup getChannelGroup() {
-        channelCollectorHandler.waitForAtLeastOneChannel();
-        return channelCollectorHandler.getChannels();
+        connectionManager.waitForAtLeastOneChannel();
+        return connectionManager.getChannels();
     }
 
     @Override
     public void configurePipeline(ChannelPipeline pipeline, ServerConnector serverConnector) {
+        pipeline.addLast("connectionValidationHandler", new ConnectionValidationHandler());
+        pipeline.addLast("connectionListenerHandler", new ConnectionListenerHandler(connectionManager));
         pipeline.addLast("responseEncoder", new ResponseEncoder(localAddress));
         pipeline.addLast("messageEncoder", new MessageEncoder(localAddress, localAddress.getParent()));
-        pipeline.addLast("collector", channelCollectorHandler);
         pipeline.addLast("frameDecoder", new SimulatorFrameDecoder());
         pipeline.addLast("protocolDecoder", new SimulatorProtocolDecoder(localAddress));
-        pipeline.addLast("messageConsumeHandler", messageConsumeHandler);
+        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor));
         pipeline.addLast("testProtocolDecoder", new SimulatorProtocolDecoder(localAddress.getChild(0)));
-        pipeline.addLast("testMessageConsumeHandler", messageTestConsumeHandler);
+        pipeline.addLast("testMessageConsumeHandler", new MessageTestConsumeHandler(testProcessorManager, localAddress));
         pipeline.addLast("responseHandler", new ResponseHandler(localAddress, localAddress.getParent(), getFutureMap(),
                 getLocalAddressIndex()));
         pipeline.addLast("exceptionHandler", new ExceptionHandler(serverConnector));
     }
 
     public void addTest(int testIndex, OperationProcessor processor) {
-        messageTestConsumeHandler.addTest(testIndex, processor);
+        testProcessorManager.addTest(testIndex, processor);
     }
 
     public void removeTest(int testIndex) {
-        messageTestConsumeHandler.removeTest(testIndex);
+        testProcessorManager.removeTest(testIndex);
     }
 }

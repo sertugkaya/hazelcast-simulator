@@ -1,36 +1,29 @@
-package com.hazelcast.simulator.protocol.handler;
+package com.hazelcast.simulator.protocol.core;
 
-import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.Channel;
+import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import org.junit.Before;
 import org.junit.Test;
 
 import static com.hazelcast.simulator.utils.CommonUtils.rethrow;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-public class ChannelCollectorHandlerTest {
+public class ConnectionManagerTest {
 
-    private ChannelCollectorHandler channelCollectorHandler = new ChannelCollectorHandler();
-    private ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-
-    @Before
-    public void setUp() {
-        when(ctx.channel()).thenReturn(new NioSocketChannel());
-    }
+    private ConnectionManager connectionManager = new ConnectionManager();
+    private Channel channel = new NioSocketChannel();
 
     @Test
-    public void testGetChannels() throws Exception {
-        channelCollectorHandler.channelActive(ctx);
+    public void testConnectAndDisconnect() {
+        ChannelGroup channelGroup = connectionManager.getChannels();
+        assertEquals(0, channelGroup.size());
 
-        assertEquals(1, channelCollectorHandler.getChannels().size());
-    }
+        connectionManager.connected(channel);
+        assertEquals(1, channelGroup.size());
 
-    @Test
-    public void testGetChannels_empty() {
-        assertEquals(0, channelCollectorHandler.getChannels().size());
+        connectionManager.disconnected(channel);
+        assertEquals(0, channelGroup.size());
     }
 
     @Test(timeout = 5000)
@@ -40,7 +33,7 @@ public class ChannelCollectorHandlerTest {
             public void run() {
                 sleepMillis(500);
                 try {
-                    channelCollectorHandler.channelActive(ctx);
+                    connectionManager.connected(channel);
                 } catch (Exception e) {
                     throw rethrow(e);
                 }
@@ -48,7 +41,7 @@ public class ChannelCollectorHandlerTest {
         };
         addChannelThread.start();
 
-        channelCollectorHandler.waitForAtLeastOneChannel();
+        connectionManager.waitForAtLeastOneChannel();
         addChannelThread.join();
     }
 
@@ -64,7 +57,7 @@ public class ChannelCollectorHandlerTest {
         };
         interruptThread.start();
 
-        channelCollectorHandler.waitForAtLeastOneChannel();
+        connectionManager.waitForAtLeastOneChannel();
         interruptThread.join();
     }
 }
