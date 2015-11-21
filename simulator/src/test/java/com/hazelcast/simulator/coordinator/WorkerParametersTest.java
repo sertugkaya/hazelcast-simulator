@@ -4,7 +4,6 @@ import com.hazelcast.simulator.common.JavaProfiler;
 import com.hazelcast.simulator.common.SimulatorProperties;
 import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
-import com.hazelcast.simulator.utils.FileUtils;
 import com.hazelcast.simulator.utils.jars.HazelcastJARs;
 import org.junit.Before;
 import org.junit.Test;
@@ -12,8 +11,13 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.hazelcast.simulator.coordinator.WorkerParameters.createAddressConfig;
+import static com.hazelcast.simulator.coordinator.WorkerParameters.initClientHzConfig;
+import static com.hazelcast.simulator.coordinator.WorkerParameters.initMemberHzConfig;
+import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
@@ -23,6 +27,10 @@ import static org.mockito.Mockito.when;
 public class WorkerParametersTest {
 
     private SimulatorProperties properties;
+    private ComponentRegistry componentRegistry;
+
+    private String memberConfig;
+    private String clientConfig;
 
     @Before
     public void setUp() throws Exception {
@@ -31,12 +39,17 @@ public class WorkerParametersTest {
         when(properties.get(eq("WORKER_PERFORMANCE_MONITOR_INTERVAL_SECONDS"))).thenReturn("1234");
         when(properties.get("PROFILER")).thenReturn(JavaProfiler.NONE.name());
         when(properties.get(eq("NUMA_CONTROL"), anyString())).thenReturn("none");
+
+        componentRegistry = getComponentRegistryMock();
+
+        memberConfig = fileAsText("dist/src/main/dist/conf/hazelcast.xml");
+        clientConfig = fileAsText("dist/src/main/dist/conf/client-hazelcast.xml");
     }
 
     @Test
     public void testConstructor() {
         WorkerParameters workerParameters = new WorkerParameters(properties, true, 2342, "memberJvmOptions", "clientJvmOptions",
-                "memberHzConfig", "clientHzConfig", "log4jConfig", false);
+                memberConfig, clientConfig, "log4jConfig", false);
 
         assertTrue(workerParameters.isAutoCreateHzInstance());
         assertEquals(2342, workerParameters.getWorkerStartupTimeout());
@@ -46,9 +59,10 @@ public class WorkerParametersTest {
         assertEquals("memberJvmOptions", workerParameters.getMemberJvmOptions());
         assertEquals("clientJvmOptions", workerParameters.getClientJvmOptions());
 
-        assertEquals("memberHzConfig", workerParameters.getMemberHzConfig());
-        assertEquals("clientHzConfig", workerParameters.getClientHzConfig());
+        assertEquals(memberConfig, workerParameters.getMemberHzConfig());
+        assertEquals(clientConfig, workerParameters.getClientHzConfig());
         assertEquals("log4jConfig", workerParameters.getLog4jConfig());
+        assertFalse(workerParameters.isMonitorPerformance());
 
         assertEquals(JavaProfiler.NONE, workerParameters.getProfiler());
         assertEquals("", workerParameters.getProfilerSettings());
@@ -90,36 +104,69 @@ public class WorkerParametersTest {
     }
 
     @Test
+    public void testGetRunPhaseLogIntervalSeconds_noPerformanceMonitor() {
+        WorkerParameters workerParameters = new WorkerParameters(properties, false, 0, null, null, null, null, null, false);
+
+        int intervalSeconds = workerParameters.getRunPhaseLogIntervalSeconds(5);
+        assertEquals(5, intervalSeconds);
+    }
+
+    @Test
+    public void testGetRunPhaseLogIntervalSeconds_withPerformanceMonitor_overPerformanceMonitorInterval() {
+        WorkerParameters workerParameters = new WorkerParameters(properties, false, 0, null, null, null, null, null, true);
+
+        int intervalSeconds = workerParameters.getRunPhaseLogIntervalSeconds(5000);
+        assertEquals(1234, intervalSeconds);
+    }
+
+    @Test
+    public void testGetRunPhaseLogIntervalSeconds_withPerformanceMonitor_belowPerformanceMonitorInterval() {
+        WorkerParameters workerParameters = new WorkerParameters(properties, false, 0, null, null, null, null, null, true);
+
+        int intervalSeconds = workerParameters.getRunPhaseLogIntervalSeconds(30);
+        assertEquals(30, intervalSeconds);
+    }
+
+    @Test
+    public void testCreateAddressConfig() {
+        String addressConfig = createAddressConfig("members", componentRegistry, 6666);
+        for (int i = 1; i <= 5; i++) {
+            assertTrue(addressConfig.contains("192.168.0." + i + ":6666"));
+        }
+    }
+
+    @Test
     public void testInitMemberHzConfig() {
         when(properties.get("MANAGEMENT_CENTER_URL")).thenReturn("http://localhost:8080");
         when(properties.get("MANAGEMENT_CENTER_UPDATE_INTERVAL")).thenReturn("60");
 
-        String memberConfig = FileUtils.fileAsText("./dist/src/main/dist/conf/hazelcast.xml");
-        ComponentRegistry componentRegistry = getComponentRegistryMock();
+        assertTrue(memberConfig.contains("<!--MEMBERS-->"));
+        assertTrue(memberConfig.contains("<!--LICENSE-KEY-->"));
+        assertTrue(memberConfig.contains("<!--MANAGEMENT_CENTER_CONFIG-->"));
 
-        WorkerParameters workerParameters = new WorkerParameters(properties, false, 0, null, null, memberConfig, null, null,
-                false);
-        assertTrue(workerParameters.getMemberHzConfig().contains("<!--MEMBERS-->"));
-        assertTrue(workerParameters.getMemberHzConfig().contains("<!--MANAGEMENT_CENTER_CONFIG-->"));
+        String memberHzConfig = initMemberHzConfig(memberConfig, componentRegistry, 5701, "licenseKey2342", properties);
 
-        workerParameters.initMemberHzConfig(componentRegistry, properties);
-        assertFalse(workerParameters.getMemberHzConfig().contains("<!--MEMBERS-->"));
-        assertFalse(workerParameters.getMemberHzConfig().contains("<!--MANAGEMENT_CENTER_CONFIG-->"));
+        assertNotNull(memberHzConfig);
+        assertTrue(memberHzConfig.contains("licenseKey2342"));
+        assertTrue(memberHzConfig.contains("http://localhost:8080"));
+
+        assertFalse(memberHzConfig.contains("<!--MEMBERS-->"));
+        assertFalse(memberHzConfig.contains("<!--LICENSE-KEY-->"));
+        assertFalse(memberHzConfig.contains("<!--MANAGEMENT_CENTER_CONFIG-->"));
     }
 
     @Test
     public void testInitClientHzConfig() {
-        String memberConfig = FileUtils.fileAsText("./dist/src/main/dist/conf/hazelcast.xml");
-        String clientConfig = FileUtils.fileAsText("./dist/src/main/dist/conf/client-hazelcast.xml");
+        assertTrue(clientConfig.contains("<!--MEMBERS-->"));
+        assertTrue(clientConfig.contains("<!--LICENSE-KEY-->"));
 
-        ComponentRegistry componentRegistry = getComponentRegistryMock();
+        String clientHzConfig = initClientHzConfig(clientConfig, componentRegistry, 5701, "licenseKey2342");
 
-        WorkerParameters workerParameters = new WorkerParameters(properties, false, 0, null, null, memberConfig, clientConfig,
-                null, false);
-        assertTrue(workerParameters.getClientHzConfig().contains("<!--MEMBERS-->"));
+        assertNotNull(clientHzConfig);
+        assertTrue(clientHzConfig.contains("licenseKey2342"));
 
-        workerParameters.initClientHzConfig(componentRegistry);
-        assertFalse(workerParameters.getClientHzConfig().contains("<!--MEMBERS-->"));
+        assertFalse(clientHzConfig.contains("<!--MEMBERS-->"));
+        assertFalse(clientHzConfig.contains("<!--LICENSE-KEY-->"));
     }
 
     private ComponentRegistry getComponentRegistryMock() {

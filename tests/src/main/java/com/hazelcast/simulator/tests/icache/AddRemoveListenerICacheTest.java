@@ -1,6 +1,20 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.icache;
 
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
@@ -52,14 +66,13 @@ public class AddRemoveListenerICacheTest {
     public double getProb = 0.25;
 
     private final OperationSelectorBuilder<Operation> builder = new OperationSelectorBuilder<Operation>();
-    private final CacheConfig<Integer, Long> config = new CacheConfig<Integer, Long>();
     private final ICacheEntryListener<Integer, Long> listener = new ICacheEntryListener<Integer, Long>();
     private final ICacheEntryEventFilter<Integer, Long> filter = new ICacheEntryEventFilter<Integer, Long>();
 
+    private IList<ICacheListenerOperationCounter> results;
     private CacheManager cacheManager;
     private Cache<Integer, Long> cache;
     private MutableCacheEntryListenerConfiguration<Integer, Long> listenerConfiguration;
-    private IList<ICacheListenerOperationCounter> results;
 
     @Setup
     public void setup(TestContext testContext) {
@@ -67,9 +80,7 @@ public class AddRemoveListenerICacheTest {
         results = hazelcastInstance.getList(basename);
 
         cacheManager = createCacheManager(hazelcastInstance);
-
-        config.setName(basename);
-        cacheManager.createCache(basename, config);
+        cacheManager.getCache(basename);
 
         builder.addOperation(Operation.REGISTER, registerProb)
                 .addOperation(Operation.DE_REGISTER, deRegisterProb)
@@ -88,7 +99,7 @@ public class AddRemoveListenerICacheTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         ICacheListenerOperationCounter total = new ICacheListenerOperationCounter();
         for (ICacheListenerOperationCounter i : results) {
             total.add(i);

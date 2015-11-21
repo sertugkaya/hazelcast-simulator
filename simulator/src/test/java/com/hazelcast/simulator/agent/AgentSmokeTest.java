@@ -1,13 +1,14 @@
 package com.hazelcast.simulator.agent;
 
 import com.hazelcast.core.Hazelcast;
+import com.hazelcast.simulator.cluster.ClusterLayout;
 import com.hazelcast.simulator.common.SimulatorProperties;
-import com.hazelcast.simulator.coordinator.AgentMemberLayout;
-import com.hazelcast.simulator.coordinator.AgentMemberMode;
 import com.hazelcast.simulator.coordinator.FailureContainer;
 import com.hazelcast.simulator.coordinator.PerformanceStateContainer;
 import com.hazelcast.simulator.coordinator.RemoteClient;
 import com.hazelcast.simulator.coordinator.TestHistogramContainer;
+import com.hazelcast.simulator.coordinator.TestPhaseListener;
+import com.hazelcast.simulator.coordinator.TestPhaseListenerContainer;
 import com.hazelcast.simulator.coordinator.WorkerParameters;
 import com.hazelcast.simulator.protocol.connector.CoordinatorConnector;
 import com.hazelcast.simulator.protocol.operation.CreateTestOperation;
@@ -15,7 +16,6 @@ import com.hazelcast.simulator.protocol.operation.FailureOperation;
 import com.hazelcast.simulator.protocol.operation.StartTestOperation;
 import com.hazelcast.simulator.protocol.operation.StartTestPhaseOperation;
 import com.hazelcast.simulator.protocol.operation.StopTestOperation;
-import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.test.TestCase;
 import com.hazelcast.simulator.test.TestException;
@@ -24,7 +24,6 @@ import com.hazelcast.simulator.test.TestSuite;
 import com.hazelcast.simulator.tests.FailingTest;
 import com.hazelcast.simulator.tests.SuccessTest;
 import com.hazelcast.simulator.utils.AssertTask;
-import com.hazelcast.simulator.worker.WorkerType;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.junit.AfterClass;
@@ -32,13 +31,17 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.Collections;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicReference;
 
-import static com.hazelcast.simulator.protocol.configuration.Ports.AGENT_PORT;
+import static com.hazelcast.simulator.TestEnvironmentUtils.deleteLogs;
+import static com.hazelcast.simulator.TestEnvironmentUtils.resetLogLevel;
+import static com.hazelcast.simulator.TestEnvironmentUtils.resetUserDir;
+import static com.hazelcast.simulator.TestEnvironmentUtils.setDistributionUserDir;
+import static com.hazelcast.simulator.TestEnvironmentUtils.setLogLevel;
+import static com.hazelcast.simulator.cluster.ClusterLayout.createSingleInstanceClusterLayout;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
@@ -49,44 +52,42 @@ import static org.junit.Assert.assertTrue;
 
 public class AgentSmokeTest {
 
-    private static final String AGENT_IP_ADDRESS = System.getProperty("agentBindAddress", "127.0.0.1");
-    private static final int TEST_RUNTIME_SECONDS = Integer.parseInt(System.getProperty("testRuntimeSeconds", "5"));
+    private static final String AGENT_IP_ADDRESS = "127.0.0.1";
+    private static final int AGENT_PORT = 9000;
+    private static final int TEST_RUNTIME_SECONDS = 3;
 
     private static final Logger LOGGER = Logger.getLogger(AgentSmokeTest.class);
-    private static final Logger ROOT_LOGGER = Logger.getRootLogger();
-    private static final AtomicReference<Level> LOGGER_LEVEL = new AtomicReference<Level>();
 
-    private static String userDir;
+    private static ComponentRegistry componentRegistry;
     private static AgentStarter agentStarter;
 
     private static FailureContainer failureContainer;
 
+    private static TestPhaseListenerContainer testPhaseListenerContainer;
     private static CoordinatorConnector coordinatorConnector;
     private static RemoteClient remoteClient;
 
     @BeforeClass
     public static void setUp() throws Exception {
-        if (LOGGER_LEVEL.compareAndSet(null, ROOT_LOGGER.getLevel())) {
-            ROOT_LOGGER.setLevel(Level.TRACE);
-        }
+        setLogLevel(Level.TRACE);
 
-        userDir = System.getProperty("user.dir");
-
-        System.setProperty("user.dir", "./dist/src/main/dist");
+        setDistributionUserDir();
 
         LOGGER.info("Agent bind address for smoke test: " + AGENT_IP_ADDRESS);
         LOGGER.info("Test runtime for smoke test: " + TEST_RUNTIME_SECONDS + " seconds");
 
-        ComponentRegistry componentRegistry = new ComponentRegistry();
+        componentRegistry = new ComponentRegistry();
         componentRegistry.addAgent(AGENT_IP_ADDRESS, AGENT_IP_ADDRESS);
 
         agentStarter = new AgentStarter();
 
+        testPhaseListenerContainer = new TestPhaseListenerContainer();
         PerformanceStateContainer performanceStateContainer = new PerformanceStateContainer();
         TestHistogramContainer testHistogramContainer = new TestHistogramContainer(performanceStateContainer);
         failureContainer = new FailureContainer("agentSmokeTest", null);
 
-        coordinatorConnector = new CoordinatorConnector(performanceStateContainer, testHistogramContainer, failureContainer);
+        coordinatorConnector = new CoordinatorConnector(testPhaseListenerContainer, performanceStateContainer,
+                testHistogramContainer, failureContainer);
         coordinatorConnector.addAgent(1, AGENT_IP_ADDRESS, AGENT_PORT);
 
         remoteClient = new RemoteClient(coordinatorConnector, componentRegistry);
@@ -103,17 +104,11 @@ public class AgentSmokeTest {
         } finally {
             Hazelcast.shutdownAll();
 
-            System.setProperty("user.dir", userDir);
+            resetUserDir();
+            deleteLogs();
+            deleteQuiet(new File("failures-agentSmokeTest.txt"));
 
-            deleteQuiet(new File("./dist/src/main/dist/workers"));
-            deleteQuiet(new File("./logs"));
-            deleteQuiet(new File("./workers"));
-            deleteQuiet(new File("./failures-agentSmokeTest.txt"));
-
-            Level level = LOGGER_LEVEL.get();
-            if (level != null && LOGGER_LEVEL.compareAndSet(level, null)) {
-                ROOT_LOGGER.setLevel(level);
-            }
+            resetLogLevel();
         }
     }
 
@@ -148,41 +143,54 @@ public class AgentSmokeTest {
     }
 
     private void executeTestCase(TestCase testCase) throws Exception {
-        TestSuite testSuite = new TestSuite();
-        remoteClient.initTestSuite(testSuite);
+        try {
+            String testId = testCase.getId();
+            TestSuite testSuite = new TestSuite();
+            remoteClient.initTestSuite(testSuite);
+            testSuite.addTest(testCase);
 
-        LOGGER.info("Creating workers...");
-        createWorkers();
+            componentRegistry.addTests(testSuite);
+            int testIndex = componentRegistry.getTest(testId).getTestIndex();
+            LOGGER.info(format("Created TestSuite for %s with index %d", testId, testIndex));
 
-        LOGGER.info("InitTest phase...");
-        remoteClient.sendToAllWorkers(new CreateTestOperation(testCase));
+            TestPhaseListenerImpl testPhaseListener = new TestPhaseListenerImpl();
+            testPhaseListenerContainer.addListener(testIndex, testPhaseListener);
 
-        runPhase(testCase, TestPhase.SETUP);
+            LOGGER.info("Creating workers...");
+            createWorkers();
 
-        runPhase(testCase, TestPhase.LOCAL_WARMUP);
-        runPhase(testCase, TestPhase.GLOBAL_WARMUP);
+            LOGGER.info("InitTest phase...");
+            remoteClient.sendToAllWorkers(new CreateTestOperation(testIndex, testCase));
 
-        LOGGER.info("Starting run phase...");
-        remoteClient.sendToAllWorkers(new StartTestOperation(testCase.getId(), false));
+            runPhase(testPhaseListener, testCase, TestPhase.SETUP);
 
-        LOGGER.info("Running for " + TEST_RUNTIME_SECONDS + " seconds");
-        sleepSeconds(TEST_RUNTIME_SECONDS);
-        LOGGER.info("Finished running");
+            runPhase(testPhaseListener, testCase, TestPhase.LOCAL_WARMUP);
+            runPhase(testPhaseListener, testCase, TestPhase.GLOBAL_WARMUP);
 
-        LOGGER.info("Stopping test...");
-        remoteClient.sendToAllWorkers(new StopTestOperation(testCase.getId()));
-        remoteClient.waitForPhaseCompletion("", testCase.getId(), TestPhase.RUN);
+            LOGGER.info("Starting run phase...");
+            remoteClient.sendToTestOnAllWorkers(testId, new StartTestOperation(false));
 
-        runPhase(testCase, TestPhase.GLOBAL_VERIFY);
-        runPhase(testCase, TestPhase.LOCAL_VERIFY);
+            LOGGER.info("Running for " + TEST_RUNTIME_SECONDS + " seconds");
+            sleepSeconds(TEST_RUNTIME_SECONDS);
+            LOGGER.info("Finished running");
 
-        runPhase(testCase, TestPhase.GLOBAL_TEARDOWN);
-        runPhase(testCase, TestPhase.LOCAL_TEARDOWN);
+            LOGGER.info("Stopping test...");
+            remoteClient.sendToTestOnAllWorkers(testId, new StopTestOperation());
+            testPhaseListener.await(TestPhase.RUN);
 
-        LOGGER.info("Terminating workers...");
-        remoteClient.terminateWorkers();
+            runPhase(testPhaseListener, testCase, TestPhase.GLOBAL_VERIFY);
+            runPhase(testPhaseListener, testCase, TestPhase.LOCAL_VERIFY);
 
-        LOGGER.info("Testcase done!");
+            runPhase(testPhaseListener, testCase, TestPhase.GLOBAL_TEARDOWN);
+            runPhase(testPhaseListener, testCase, TestPhase.LOCAL_TEARDOWN);
+        } finally {
+            componentRegistry.removeTests();
+
+            LOGGER.info("Terminating workers...");
+            remoteClient.terminateWorkers(false);
+
+            LOGGER.info("Testcase done!");
+        }
     }
 
     private static void createWorkers() {
@@ -192,23 +200,23 @@ public class AgentSmokeTest {
                 60000,
                 "",
                 "",
-                fileAsText("./simulator/src/test/resources/hazelcast.xml"),
+                fileAsText("simulator/src/test/resources/hazelcast.xml"),
                 "",
-                fileAsText("./dist/src/main/dist/conf/worker-log4j.xml"),
+                fileAsText("dist/src/main/dist/conf/worker-log4j.xml"),
                 false
         );
-
-        AgentData agentData = new AgentData(1, AGENT_IP_ADDRESS, AGENT_IP_ADDRESS);
-        AgentMemberLayout agentLayout = new AgentMemberLayout(agentData, AgentMemberMode.MEMBER);
-        agentLayout.addWorker(WorkerType.MEMBER, workerParameters);
-
-        remoteClient.createWorkers(Collections.singletonList(agentLayout));
+        ClusterLayout clusterLayout = createSingleInstanceClusterLayout(AGENT_IP_ADDRESS, workerParameters);
+        remoteClient.createWorkers(clusterLayout, false);
     }
 
-    private static void runPhase(TestCase testCase, TestPhase testPhase) throws TimeoutException {
+    private static void runPhase(TestPhaseListenerImpl listener, TestCase testCase, TestPhase testPhase) throws Exception {
         LOGGER.info("Starting " + testPhase.desc() + " phase...");
-        remoteClient.sendToAllWorkers(new StartTestPhaseOperation(testCase.getId(), testPhase));
-        remoteClient.waitForPhaseCompletion("", testCase.getId(), testPhase);
+        if (testPhase.isGlobal()) {
+            remoteClient.sendToTestOnFirstWorker(testCase.getId(), new StartTestPhaseOperation(testPhase));
+        } else {
+            remoteClient.sendToTestOnAllWorkers(testCase.getId(), new StartTestPhaseOperation(testPhase));
+        }
+        listener.await(testPhase);
     }
 
     private static Queue<FailureOperation> getFailureOperations(final int expectedFailures) {
@@ -222,6 +230,26 @@ public class AgentSmokeTest {
             });
         }
         return failureContainer.getFailureOperations();
+    }
+
+    private static final class TestPhaseListenerImpl implements TestPhaseListener {
+
+        private final ConcurrentMap<TestPhase, CountDownLatch> latches = new ConcurrentHashMap<TestPhase, CountDownLatch>();
+
+        public TestPhaseListenerImpl() {
+            for (TestPhase testPhase : TestPhase.values()) {
+                latches.put(testPhase, new CountDownLatch(1));
+            }
+        }
+
+        @Override
+        public void completed(TestPhase testPhase) {
+            latches.get(testPhase).countDown();
+        }
+
+        public void await(TestPhase testPhase) throws Exception {
+            latches.get(testPhase).await();
+        }
     }
 
     private static final class AgentStarter {
@@ -247,7 +275,8 @@ public class AgentSmokeTest {
             public void run() {
                 agent = Agent.createAgent(new String[]{
                         "--addressIndex", "1",
-                        "--publicAddress", "127.0.0.1"
+                        "--publicAddress", AGENT_IP_ADDRESS,
+                        "--port", String.valueOf(AGENT_PORT)
                 });
                 latch.countDown();
             }

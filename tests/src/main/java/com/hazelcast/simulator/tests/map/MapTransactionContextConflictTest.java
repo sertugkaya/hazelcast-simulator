@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -7,7 +22,6 @@ import com.hazelcast.core.TransactionalMap;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
@@ -22,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -48,23 +63,23 @@ public class MapTransactionContextConflictTest {
     private TestContext testContext;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         targetInstance = testContext.getTargetInstance();
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
+    public void warmup() {
         IMap<Integer, Long> map = targetInstance.getMap(basename);
-        for (int k = 0; k < keyCount; k++) {
-            map.put(k, 0L);
+        for (int i = 0; i < keyCount; i++) {
+            map.put(i, 0L);
         }
     }
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
-        for (int k = 0; k < threadCount; k++) {
+        ThreadSpawner spawner = new ThreadSpawner(basename);
+        for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new Worker());
         }
         spawner.awaitCompletion();
@@ -77,6 +92,7 @@ public class MapTransactionContextConflictTest {
         private final TxnCounter count = new TxnCounter();
 
         @Override
+        @SuppressWarnings("PMD.PreserveStackTrace")
         public void run() {
             while (!testContext.isStopped()) {
 
@@ -109,7 +125,7 @@ public class MapTransactionContextConflictTest {
                 } catch (TransactionException commitException) {
                     LOGGER.warning(basename + ": commit failed. tried key increments=" + putIncrements, commitException);
                     if (throwCommitException) {
-                        throw new TestException(commitException);
+                        throw rethrow(commitException);
                     }
 
                     try {
@@ -120,7 +136,7 @@ public class MapTransactionContextConflictTest {
                         count.failedRollbacks++;
 
                         if (throwRollBackException) {
-                            throw new TestException(rollBackException);
+                            throw rethrow(rollBackException);
                         }
                     }
                 }
@@ -131,7 +147,7 @@ public class MapTransactionContextConflictTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         IList<TxnCounter> counts = targetInstance.getList(basename + "count");
         TxnCounter total = new TxnCounter();
         for (TxnCounter c : counts) {
@@ -149,10 +165,10 @@ public class MapTransactionContextConflictTest {
 
         IMap<Integer, Long> map = targetInstance.getMap(basename);
         int failures = 0;
-        for (int k = 0; k < keyCount; k++) {
-            if (expected[k] != map.get(k)) {
+        for (int i = 0; i < keyCount; i++) {
+            if (expected[i] != map.get(i)) {
                 failures++;
-                LOGGER.info(basename + ": key=" + k + " expected " + expected[k] + " != " + "actual " + map.get(k));
+                LOGGER.info(basename + ": key=" + i + " expected " + expected[i] + " != " + "actual " + map.get(i));
             }
         }
         assertEquals(basename + ": " + failures + " key=>values have been incremented unExpected", 0, failures);

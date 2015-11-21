@@ -15,6 +15,7 @@
  */
 package com.hazelcast.simulator.tests.icache;
 
+import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
@@ -32,7 +33,6 @@ import com.hazelcast.simulator.worker.tasks.AbstractWorker;
 import javax.cache.Cache;
 import javax.cache.CacheManager;
 import javax.cache.configuration.FactoryBuilder;
-import javax.cache.configuration.MutableConfiguration;
 
 import static com.hazelcast.simulator.tests.icache.helpers.CacheUtils.createCacheManager;
 import static org.junit.Assert.assertNotNull;
@@ -67,11 +67,11 @@ public class ReadWriteICacheTest {
     private final OperationSelectorBuilder<Operation> builder = new OperationSelectorBuilder<Operation>();
 
     private IList<ICacheReadWriteCounter> counters;
-    private MutableConfiguration<Integer, Integer> config;
+    private CacheConfig<Integer, Integer> config;
     private Cache<Integer, Integer> cache;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
         counters = hazelcastInstance.getList(basename + "counters");
 
@@ -82,7 +82,7 @@ public class ReadWriteICacheTest {
         writer.writeDelayMs = putDelayMs;
         writer.deleteDelayMs = removeDelayMs;
 
-        config = new MutableConfiguration<Integer, Integer>();
+        config = new CacheConfig<Integer, Integer>();
         config.setReadThrough(true);
         config.setWriteThrough(true);
         config.setCacheLoaderFactory(FactoryBuilder.factoryOf(loader));
@@ -98,7 +98,7 @@ public class ReadWriteICacheTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         RecordingCacheLoader loader = (RecordingCacheLoader) config.getCacheLoaderFactory().create();
         RecordingCacheWriter writer = (RecordingCacheWriter) config.getCacheWriterFactory().create();
 
@@ -107,7 +107,7 @@ public class ReadWriteICacheTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         ICacheReadWriteCounter total = new ICacheReadWriteCounter();
         for (ICacheReadWriteCounter counter : counters) {
             total.add(counter);

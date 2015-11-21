@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -12,6 +27,7 @@ import com.hazelcast.simulator.test.annotations.Warmup;
 import com.hazelcast.simulator.utils.ThreadSpawner;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.waitClusterSize;
+import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static org.junit.Assert.assertEquals;
 
@@ -29,7 +45,7 @@ public class SplitClusterDataTest {
     private IMap<Object, Object> map;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         targetInstance = testContext.getTargetInstance();
         map = targetInstance.getMap(basename);
@@ -40,7 +56,7 @@ public class SplitClusterDataTest {
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
+    public void warmup() {
         waitClusterSize(LOGGER, targetInstance, clusterSize);
 
         for (int i = 0; i < maxItems; i++) {
@@ -50,7 +66,7 @@ public class SplitClusterDataTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         spawner.spawn(new Worker());
         spawner.awaitCompletion();
     }
@@ -65,7 +81,7 @@ public class SplitClusterDataTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         LOGGER.info(basename + ": cluster size =" + targetInstance.getCluster().getMembers().size());
         LOGGER.info(basename + ": map size =" + map.size());
 
@@ -76,9 +92,7 @@ public class SplitClusterDataTest {
 
             int max = 0;
             while (map.size() != maxItems) {
-
-                Thread.sleep(1000);
-
+                sleepMillis(1000);
                 if (max++ == 60) {
                     break;
                 }

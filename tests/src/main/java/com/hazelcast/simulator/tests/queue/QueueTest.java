@@ -20,7 +20,6 @@ import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
@@ -32,6 +31,7 @@ import com.hazelcast.simulator.utils.ThreadSpawner;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static org.junit.Assert.assertEquals;
 
@@ -54,14 +54,13 @@ public class QueueTest {
 
     @Setup
     @SuppressWarnings("unchecked")
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
 
         queues = new IQueue[queueLength];
 
-        String prefix = basename + '-' + testContext.getTestId() + '-';
-        String[] names = generateStringKeys(prefix, queueLength, prefix.length() + 5, keyLocality, targetInstance);
+        String[] names = generateStringKeys(basename, queueLength, basename.length() + 5, keyLocality, targetInstance);
         for (int i = 0; i < queues.length; i++) {
             queues[i] = targetInstance.getQueue(names[i]);
         }
@@ -74,7 +73,7 @@ public class QueueTest {
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         for (IQueue queue : queues) {
             queue.destroy();
         }
@@ -95,7 +94,7 @@ public class QueueTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         for (int queueIndex = 0; queueIndex < queueLength; queueIndex++) {
             for (int i = 0; i < threadsPerQueue; i++) {
                 spawner.spawn(new Worker(queueIndex));
@@ -143,7 +142,7 @@ public class QueueTest {
                 toQueue.put(0L);
                 totalCounter.addAndGet(iteration);
             } catch (InterruptedException e) {
-                throw new TestException(e);
+                throw rethrow(e);
             }
         }
     }

@@ -21,7 +21,6 @@ import com.hazelcast.core.IQueue;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
@@ -32,6 +31,7 @@ import com.hazelcast.simulator.utils.ThreadSpawner;
 import java.io.Serializable;
 import java.util.Random;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static org.junit.Assert.assertEquals;
 
 public class ProducerConsumerTest {
@@ -50,17 +50,17 @@ public class ProducerConsumerTest {
     private TestContext testContext;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
 
-        produced = targetInstance.getAtomicLong(basename + '-' + testContext.getTestId() + ":Produced");
-        consumed = targetInstance.getAtomicLong(basename + '-' + testContext.getTestId() + ":Consumed");
-        workQueue = targetInstance.getQueue(basename + '-' + testContext.getTestId() + ":WorkQueue");
+        produced = targetInstance.getAtomicLong(basename + ":Produced");
+        consumed = targetInstance.getAtomicLong(basename + ":Consumed");
+        workQueue = targetInstance.getQueue(basename + ":WorkQueue");
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         produced.destroy();
         workQueue.destroy();
         consumed.destroy();
@@ -68,12 +68,12 @@ public class ProducerConsumerTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
-        for (int k = 0; k < producerCount; k++) {
-            spawner.spawn("ProducerThread", new Producer(k));
+        ThreadSpawner spawner = new ThreadSpawner(basename);
+        for (int i = 0; i < producerCount; i++) {
+            spawner.spawn("ProducerThread", new Producer(i));
         }
-        for (int k = 0; k < consumerCount; k++) {
-            spawner.spawn("ConsumerThread", new Consumer(k));
+        for (int i = 0; i < consumerCount; i++) {
+            spawner.spawn("ConsumerThread", new Consumer(i));
         }
         spawner.awaitCompletion();
     }
@@ -111,7 +111,7 @@ public class ProducerConsumerTest {
                         ));
                     }
                 } catch (Exception e) {
-                    throw new TestException(e);
+                    throw rethrow(e);
                 }
             }
         }
@@ -143,7 +143,7 @@ public class ProducerConsumerTest {
                         ));
                     }
                 } catch (Exception e) {
-                    throw new TestException(e);
+                    throw rethrow(e);
                 }
             }
         }

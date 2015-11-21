@@ -15,7 +15,6 @@
  */
 package com.hazelcast.simulator.utils.helper;
 
-@SuppressWarnings("unused")
 public final class ExitException extends SecurityException {
 
     private final int status;

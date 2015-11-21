@@ -1,10 +1,22 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.provisioner;
 
 import com.amazonaws.AmazonServiceException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.PropertiesCredentials;
 import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.Filter;
@@ -25,7 +37,6 @@ import com.hazelcast.simulator.common.AgentsFile;
 import com.hazelcast.simulator.common.SimulatorProperties;
 import com.hazelcast.simulator.protocol.registry.AgentData;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
-import com.hazelcast.simulator.utils.CommandLineExitException;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -35,20 +46,25 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.simulator.common.GitInfo.getBuildTime;
+import static com.hazelcast.simulator.common.GitInfo.getCommitIdAbbrev;
+import static com.hazelcast.simulator.provisioner.AwsProvisionerCli.init;
+import static com.hazelcast.simulator.provisioner.AwsProvisionerCli.run;
 import static com.hazelcast.simulator.utils.CommonUtils.exitWithError;
-import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
+import static com.hazelcast.simulator.utils.CommonUtils.getSimulatorVersion;
+import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static com.hazelcast.simulator.utils.FileUtils.appendText;
+import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
-import static com.hazelcast.simulator.utils.SimulatorUtils.loadComponentRegister;
+import static java.lang.String.format;
 
 /**
  * An AWS specific provisioning class which is using the AWS SDK to create AWS instances and AWS elastic load balancer.
  */
-@SuppressWarnings("checkstyle:classdataabstractioncoupling")
 public class AwsProvisioner {
 
     // the file which will hold the public domain name of the created load balancer
-    private static final String AWS_ELB_FILE_NAME = "aws-elb.txt";
+    static final String AWS_ELB_FILE_NAME = "aws-elb.txt";
 
     // AWS specific magic strings
     private static final String AWS_RUNNING_STATE = "running";
@@ -62,7 +78,12 @@ public class AwsProvisioner {
     private final File agentsFile = new File(AgentsFile.NAME);
     private final File elbFile = new File(AWS_ELB_FILE_NAME);
 
+    private final AmazonEC2 ec2;
+    private final AmazonElasticLoadBalancingClient elb;
     private final ComponentRegistry componentRegistry;
+
+    private final int maxSleepIterations;
+    private final int sleepMillis;
 
     private final String elbProtocol;
     private final int elbPortIn;
@@ -75,14 +96,24 @@ public class AwsProvisioner {
     private final String awsBoxId;
     private final String subNetId;
 
-    private final AmazonEC2 ec2;
-    private final AmazonElasticLoadBalancingClient elb;
+    public AwsProvisioner(AmazonEC2 ec2, AmazonElasticLoadBalancingClient elb, ComponentRegistry componentRegistry,
+                          SimulatorProperties properties) {
+        this(ec2, elb, componentRegistry, properties, MAX_SLEEPING_ITERATIONS, SLEEPING_MILLIS);
+    }
 
-    AwsProvisioner(SimulatorProperties properties) {
-        this.componentRegistry = loadComponentRegister(agentsFile, false);
+    public AwsProvisioner(AmazonEC2 ec2, AmazonElasticLoadBalancingClient elb, ComponentRegistry componentRegistry,
+                          SimulatorProperties properties, int maxSleepIterations, int sleepMillis) {
+        LOGGER.info("AWS Provisioner");
+        LOGGER.info(format("Version: %s, Commit: %s, Build Time: %s", getSimulatorVersion(), getCommitIdAbbrev(),
+                getBuildTime()));
+        LOGGER.info(format("SIMULATOR_HOME: %s", getSimulatorHome()));
 
-        String awsCredentialsPath = properties.get("AWS_CREDENTIALS", "awscredentials.properties");
-        File credentialsFile = new File(awsCredentialsPath);
+        this.ec2 = ec2;
+        this.elb = elb;
+        this.componentRegistry = componentRegistry;
+
+        this.maxSleepIterations = maxSleepIterations;
+        this.sleepMillis = sleepMillis;
 
         this.elbProtocol = properties.get("ELB_PROTOCOL");
         this.elbPortIn = Integer.parseInt(properties.get("ELB_PORT_IN", "0"));
@@ -94,14 +125,6 @@ public class AwsProvisioner {
         this.awsAmi = properties.get("AWS_AMI");
         this.awsBoxId = properties.get("AWS_BOXID");
         this.subNetId = properties.get("SUBNET_ID", "");
-
-        try {
-            AWSCredentials credentials = new PropertiesCredentials(credentialsFile);
-            this.ec2 = new AmazonEC2Client(credentials);
-            this.elb = new AmazonElasticLoadBalancingClient(credentials);
-        } catch (Exception e) {
-            throw new CommandLineExitException("Credentials file could not be loaded", e);
-        }
     }
 
     void scaleInstanceCountTo(int totalInstancesWanted) {
@@ -133,22 +156,17 @@ public class AwsProvisioner {
             createLoadBalancer(elbName);
         }
 
-        List<Instance> instances = getInstancesByPublicIp(componentRegistry.getAgents());
+        List<Instance> instances = getInstancesByPublicIp(componentRegistry.getAgents(), false);
         addInstancesToElb(elbName, instances);
     }
 
     void shutdown() {
-        if (ec2 != null) {
-            ec2.shutdown();
-        }
-        if (elb != null) {
-            elb.shutdown();
-        }
+        ec2.shutdown();
+        elb.shutdown();
     }
 
     private List<Instance> createInstances(int instanceCount) {
         RunInstancesRequest runInstancesRequest = new RunInstancesRequest();
-
         runInstancesRequest.withImageId(awsAmi)
                 .withInstanceType(awsBoxId)
                 .withMinCount(instanceCount)
@@ -169,6 +187,7 @@ public class AwsProvisioner {
             if (waitForInstanceStatusRunning(instance)) {
                 addInstanceToAgentsFile(instance);
                 checkedInstances.add(instance);
+                componentRegistry.addAgent(instance.getPublicIpAddress(), instance.getPrivateIpAddress());
             } else {
                 LOGGER.warn("Timeout waiting for running status id=" + instance.getInstanceId());
             }
@@ -178,7 +197,7 @@ public class AwsProvisioner {
 
     private void terminateInstances(int count) {
         List<AgentData> deadList = componentRegistry.getAgents(count);
-        List<Instance> deadInstances = getInstancesByPublicIp(deadList);
+        List<Instance> deadInstances = getInstancesByPublicIp(deadList, true);
 
         LOGGER.info("Updating " + agentsFile.getAbsolutePath());
         AgentsFile.save(agentsFile, componentRegistry);
@@ -197,11 +216,13 @@ public class AwsProvisioner {
         ec2.terminateInstances(terminateInstancesRequest);
     }
 
-    private List<Instance> getInstancesByPublicIp(List<AgentData> agentDataList) {
+    private List<Instance> getInstancesByPublicIp(List<AgentData> agentDataList, boolean removeFromRegistry) {
         List<String> ips = new ArrayList<String>();
         for (AgentData agentData : agentDataList) {
-            componentRegistry.removeAgent(agentData);
             ips.add(agentData.getPublicAddress());
+            if (removeFromRegistry) {
+                componentRegistry.removeAgent(agentData);
+            }
         }
 
         DescribeInstancesRequest request = new DescribeInstancesRequest();
@@ -222,8 +243,8 @@ public class AwsProvisioner {
         String instanceId = instance.getInstanceId();
         DescribeInstancesRequest describeInstancesRequest = new DescribeInstancesRequest().withInstanceIds(instanceId);
         int counter = 0;
-        while (counter++ < MAX_SLEEPING_ITERATIONS) {
-            sleepSeconds(SLEEPING_MILLIS);
+        while (counter++ < maxSleepIterations) {
+            sleepMillis(sleepMillis);
 
             DescribeInstancesResult result = ec2.describeInstances(describeInstancesRequest);
             for (Reservation reservation : result.getReservations()) {
@@ -264,7 +285,6 @@ public class AwsProvisioner {
                 return false;
             }
             return true;
-
         } catch (AmazonServiceException e) {
             LOGGER.fatal("Exception in isBalancerAlive(" + name + ')', e);
         }
@@ -293,10 +313,7 @@ public class AwsProvisioner {
 
     public static void main(String[] args) {
         try {
-            LOGGER.info("AWS specific provisioner");
-
-            AwsProvisioner provisioner = AwsProvisionerCli.init(args);
-            AwsProvisionerCli.run(args, provisioner);
+            run(args, init(args));
         } catch (Exception e) {
             exitWithError(LOGGER, "Could not provision machines", e);
         }

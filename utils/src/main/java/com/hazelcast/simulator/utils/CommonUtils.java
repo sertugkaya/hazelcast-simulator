@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 public final class CommonUtils {
 
@@ -38,7 +39,8 @@ public final class CommonUtils {
     }
 
     public static String getSimulatorVersion() {
-        return CommonUtils.class.getPackage().getImplementationVersion();
+        String implementationVersion = CommonUtils.class.getPackage().getImplementationVersion();
+        return (implementationVersion != null) ? implementationVersion : "SNAPSHOT";
     }
 
     public static void fixRemoteStackTrace(Throwable remoteCause, StackTraceElement[] localSideStackTrace) {
@@ -54,7 +56,7 @@ public final class CommonUtils {
         if (throwable instanceof RuntimeException) {
             throw (RuntimeException) throwable;
         } else {
-            throw new RuntimeException(throwable);
+            throw new CommandLineExitException(throwable);
         }
     }
 
@@ -164,6 +166,10 @@ public final class CommonUtils {
         }
         long randomValue = Math.abs(random.nextLong() + 1);
         sleepNanos(randomValue % maxDelayNanos);
+    }
+
+    public static long getElapsedSeconds(long started) {
+        return NANOSECONDS.toSeconds(System.nanoTime() - started);
     }
 
     public static void exitWithError() {

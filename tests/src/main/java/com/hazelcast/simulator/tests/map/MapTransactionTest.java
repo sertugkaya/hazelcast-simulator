@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -7,7 +22,6 @@ import com.hazelcast.core.TransactionalMap;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
@@ -19,6 +33,7 @@ import com.hazelcast.transaction.TransactionOptions.TransactionType;
 import com.hazelcast.transaction.TransactionalTask;
 import com.hazelcast.transaction.TransactionalTaskContext;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -45,7 +60,7 @@ public class MapTransactionTest {
     private TransactionOptions transactionOptions;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         targetInstance = testContext.getTargetInstance();
         map = targetInstance.getMap(basename);
         resultList = targetInstance.getList(basename + "results");
@@ -55,7 +70,7 @@ public class MapTransactionTest {
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
+    public void warmup() {
         for (int i = 0; i < keyCount; i++) {
             map.put(i, 0L);
         }
@@ -117,7 +132,7 @@ public class MapTransactionTest {
                 increments[key] += increment;
             } catch (TransactionException e) {
                 if (reThrowTransactionException) {
-                    throw new TestException(e);
+                    throw rethrow(e);
                 }
                 LOGGER.warning(basename + ": caught TransactionException ", e);
             }

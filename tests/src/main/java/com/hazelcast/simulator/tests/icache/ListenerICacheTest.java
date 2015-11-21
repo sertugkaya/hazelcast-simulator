@@ -1,13 +1,26 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.icache;
 
 import com.hazelcast.cache.ICache;
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
@@ -16,9 +29,7 @@ import com.hazelcast.simulator.tests.icache.helpers.ICacheEntryEventFilter;
 import com.hazelcast.simulator.tests.icache.helpers.ICacheEntryListener;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractWorker;
-import com.hazelcast.util.EmptyStatement;
 
-import javax.cache.CacheException;
 import javax.cache.CacheManager;
 import javax.cache.configuration.CacheEntryListenerConfiguration;
 import javax.cache.configuration.FactoryBuilder;
@@ -85,15 +96,6 @@ public class ListenerICacheTest {
 
         cacheManager = createCacheManager(hazelcastInstance);
 
-        CacheConfig<Integer, Long> config = new CacheConfig<Integer, Long>();
-        config.setName(basename);
-
-        try {
-            cacheManager.createCache(basename, config);
-        } catch (CacheException ignored) {
-            EmptyStatement.ignore(ignored);
-        }
-
         builder.addOperation(Operation.PUT, put)
                 .addOperation(Operation.PUT_EXPIRY, putExpiry)
                 .addOperation(Operation.PUT_EXPIRY_ASYNC, putAsyncExpiry)
@@ -119,13 +121,13 @@ public class ListenerICacheTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         LOGGER.info(basename + ": listener " + listener);
         LOGGER.info(basename + ": filter " + filter);
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         Counter total = new Counter();
         for (Counter i : results) {
             total.add(i);
@@ -184,12 +186,8 @@ public class ListenerICacheTest {
 
                 case GET_EXPIRY_ASYNC:
                     Future<Long> future = cache.getAsync(key, expiryPolicy);
-                    try {
-                        future.get();
-                        counter.getAsyncExpiry++;
-                    } catch (Exception e) {
-                        throw new TestException(e);
-                    }
+                    future.get();
+                    counter.getAsyncExpiry++;
                     break;
 
                 case REMOVE:

@@ -1,13 +1,17 @@
 package com.hazelcast.simulator.utils.jars;
 
 import com.hazelcast.simulator.common.SimulatorProperties;
-import com.hazelcast.simulator.provisioner.Bash;
+import com.hazelcast.simulator.utils.Bash;
 import com.hazelcast.simulator.utils.CommandLineExitException;
 import org.junit.After;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
+import static com.hazelcast.simulator.TestEnvironmentUtils.deleteLogs;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.ensureExistingDirectory;
 import static com.hazelcast.simulator.utils.FileUtils.ensureExistingFile;
@@ -15,6 +19,8 @@ import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static com.hazelcast.simulator.utils.jars.HazelcastJARs.BRING_MY_OWN;
 import static com.hazelcast.simulator.utils.jars.HazelcastJARs.OUT_OF_THE_BOX;
 import static com.hazelcast.simulator.utils.jars.HazelcastJARs.directoryForVersionSpec;
+import static com.hazelcast.simulator.utils.jars.HazelcastJARs.newInstance;
+import static java.util.Collections.singleton;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -35,13 +41,28 @@ public class HazelcastJARsTest {
 
     @After
     public void tearDown() {
-        deleteQuiet(new File("./logs"));
+        deleteLogs();
     }
 
     @Test
     public void testNewInstance() {
         SimulatorProperties properties = mock(SimulatorProperties.class);
-        HazelcastJARs.newInstance(bash, properties);
+        HazelcastJARs hazelcastJARs = newInstance(bash, properties, Collections.<String>emptySet());
+
+        assertEquals(0, hazelcastJARs.getVersionSpecs().size());
+    }
+
+    @Test
+    public void testNewInstance_withVersionSpecs() {
+        SimulatorProperties properties = mock(SimulatorProperties.class);
+        Set<String> versionSpecs = new HashSet<String>();
+        versionSpecs.add("maven=3.5.1");
+        versionSpecs.add("maven=3.5.2");
+        versionSpecs.add("maven=3.5.3");
+
+        HazelcastJARs hazelcastJARs = newInstance(bash, properties, versionSpecs);
+
+        assertEquals(3, hazelcastJARs.getVersionSpecs().size());
     }
 
     @Test
@@ -120,25 +141,15 @@ public class HazelcastJARsTest {
     }
 
     @Test
-    public void testPurge() {
-        HazelcastJARs hazelcastJARs = getHazelcastJARs(OUT_OF_THE_BOX);
-
-        hazelcastJARs.purge("127.0.0.1");
-
-        verify(bash, times(1)).sshQuiet(eq("127.0.0.1"), anyString());
-        verifyNoMoreInteractions(bash);
-    }
-
-    @Test
     public void testUpload() {
         HazelcastJARs hazelcastJARs = getHazelcastJARs("maven=3.6");
         String sourceDir = hazelcastJARs.getAbsolutePath("maven=3.6");
         String targetDir = directoryForVersionSpec("maven=3.6");
 
-        hazelcastJARs.upload("127.0.0.1", "simulatorHome");
+        hazelcastJARs.upload("127.0.0.1", "simulatorHome", singleton("maven=3.6"));
 
         verify(bash, times(1)).ssh(eq("127.0.0.1"), contains(targetDir));
-        verify(bash, times(1)).uploadToAgentSimulatorDir(eq("127.0.0.1"), contains(sourceDir), anyString());
+        verify(bash, times(1)).uploadToRemoteSimulatorDir(eq("127.0.0.1"), contains(sourceDir), anyString());
         verifyNoMoreInteractions(bash);
     }
 
@@ -146,17 +157,17 @@ public class HazelcastJARsTest {
     public void testUpload_outOfTheBox() {
         String targetDir = directoryForVersionSpec(OUT_OF_THE_BOX);
         HazelcastJARs hazelcastJARs = getHazelcastJARs(OUT_OF_THE_BOX);
-        hazelcastJARs.upload("127.0.0.1", "simulatorHome");
+        hazelcastJARs.upload("127.0.0.1", "simulatorHome", singleton(OUT_OF_THE_BOX));
 
         verify(bash, times(1)).ssh(eq("127.0.0.1"), contains(targetDir));
-        verify(bash, times(1)).uploadToAgentSimulatorDir(eq("127.0.0.1"), contains("simulatorHome"), anyString());
+        verify(bash, times(1)).uploadToRemoteSimulatorDir(eq("127.0.0.1"), contains("simulatorHome"), anyString());
         verifyNoMoreInteractions(bash);
     }
 
     @Test
     public void testUpload_bringMyOwn() {
         HazelcastJARs hazelcastJARs = getHazelcastJARs(BRING_MY_OWN);
-        hazelcastJARs.upload("127.0.0.1", getSimulatorHome().getAbsolutePath());
+        hazelcastJARs.upload("127.0.0.1", getSimulatorHome().getAbsolutePath(), singleton(BRING_MY_OWN));
 
         verifyNoMoreInteractions(bash);
     }
@@ -206,7 +217,9 @@ public class HazelcastJARsTest {
     }
 
     private HazelcastJARs getHazelcastJARs(String version) {
-        return new HazelcastJARs(bash, gitSupport, version);
+        HazelcastJARs hazelcastJARs = new HazelcastJARs(bash, gitSupport);
+        hazelcastJARs.addVersionSpec(version);
+        return hazelcastJARs;
     }
 
     private String getMavenMetadata() {

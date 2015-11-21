@@ -62,7 +62,7 @@ public class IntByteMapTest {
     private byte[][] values;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         HazelcastInstance instance = testContext.getTargetInstance();
         map = instance.getMap(basename);
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, instance);
@@ -77,18 +77,18 @@ public class IntByteMapTest {
     }
 
     @Teardown
-    public void tearDown() throws Exception {
+    public void tearDown() {
         map.destroy();
     }
 
     @Warmup(global = false)
-    public void warmup() throws InterruptedException {
+    public void warmup() {
         Random random = new Random();
         values = new byte[valueCount][];
-        for (int k = 0; k < values.length; k++) {
+        for (int i = 0; i < values.length; i++) {
             int delta = maxSize - minSize;
             int length = delta == 0 ? minSize : minSize + random.nextInt(delta);
-            values[k] = generateByteArray(random, length);
+            values[i] = generateByteArray(random, length);
         }
 
         Streamer<Integer, Object> streamer = StreamerFactory.getInstance(map);

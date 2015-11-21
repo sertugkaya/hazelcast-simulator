@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.protocol.processors;
 
 import com.hazelcast.simulator.agent.Agent;
@@ -23,10 +38,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static com.hazelcast.simulator.protocol.configuration.Ports.WORKER_START_PORT;
 import static com.hazelcast.simulator.protocol.core.ResponseType.SUCCESS;
 import static com.hazelcast.simulator.protocol.core.ResponseType.UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR;
 import static com.hazelcast.simulator.utils.FileUtils.ensureExistingDirectory;
+import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static java.lang.String.format;
 
 /**
@@ -77,6 +92,9 @@ public class AgentOperationProcessor extends OperationProcessor {
             case INIT_TEST_SUITE:
                 processInitTestSuite((InitTestSuiteOperation) operation);
                 break;
+            case STOP_TIMEOUT_DETECTION:
+                processStopTimeoutDetection();
+                break;
             default:
                 return UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR;
         }
@@ -101,11 +119,16 @@ public class AgentOperationProcessor extends OperationProcessor {
     private void processInitTestSuite(InitTestSuiteOperation operation) {
         agent.setTestSuite(operation.getTestSuite());
 
-        File testSuiteDir = new File(Agent.WORKERS_HOME, operation.getTestSuite().getId());
+        File workersHome = new File(getSimulatorHome(), "workers");
+        File testSuiteDir = new File(workersHome, operation.getTestSuite().getId());
         ensureExistingDirectory(testSuiteDir);
 
         File libDir = new File(testSuiteDir, "lib");
         ensureExistingDirectory(libDir);
+    }
+
+    private void processStopTimeoutDetection() {
+        agent.getWorkerJvmFailureMonitor().stopTimeoutDetection();
     }
 
     private class LaunchWorkerCallable implements Callable<Boolean> {
@@ -124,11 +147,11 @@ public class AgentOperationProcessor extends OperationProcessor {
                 launcher.launch();
 
                 int workerIndex = workerJvmSettings.getWorkerIndex();
-                int workerPort = WORKER_START_PORT + workerIndex;
+                int workerPort = agent.getPort() + workerIndex;
                 SimulatorAddress workerAddress = agent.getAgentConnector().addWorker(workerIndex, "127.0.0.1", workerPort);
 
                 WorkerType workerType = workerJvmSettings.getWorkerType();
-                agent.getCoordinatorLogger().debug(format("Created %s worker %s", workerType, workerAddress));
+                agent.getCoordinatorLogger().debug(format("Created %s Worker %s", workerType, workerAddress));
 
                 return true;
             } catch (Exception e) {

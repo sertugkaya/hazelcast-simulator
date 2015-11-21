@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.worker.performance;
 
 import static java.lang.Math.max;
@@ -16,6 +31,7 @@ public class PerformanceState {
     private double intervalThroughput;
     private double totalThroughput;
 
+    private double intervalAvgLatency;
     private long intervalMaxLatency;
     private long intervalPercentileLatency;
 
@@ -25,11 +41,12 @@ public class PerformanceState {
     }
 
     public PerformanceState(long operationCount, double intervalThroughput, double totalThroughput,
-                            long intervalPercentileLatency, long intervalMaxLatency) {
+                            double intervalAvgLatency, long intervalPercentileLatency, long intervalMaxLatency) {
         this.operationCount = operationCount;
         this.intervalThroughput = intervalThroughput;
         this.totalThroughput = totalThroughput;
 
+        this.intervalAvgLatency = intervalAvgLatency;
         this.intervalPercentileLatency = intervalPercentileLatency;
         this.intervalMaxLatency = intervalMaxLatency;
     }
@@ -44,6 +61,7 @@ public class PerformanceState {
             intervalThroughput = other.intervalThroughput;
             totalThroughput = other.totalThroughput;
 
+            intervalAvgLatency = other.intervalAvgLatency;
             intervalPercentileLatency = other.intervalPercentileLatency;
             intervalMaxLatency = other.intervalMaxLatency;
         } else {
@@ -51,6 +69,7 @@ public class PerformanceState {
             intervalThroughput += other.intervalThroughput;
             totalThroughput += other.totalThroughput;
 
+            intervalAvgLatency = max(intervalAvgLatency, other.intervalAvgLatency);
             intervalPercentileLatency = max(intervalPercentileLatency, other.intervalPercentileLatency);
             intervalMaxLatency = max(intervalMaxLatency, other.intervalMaxLatency);
         }
@@ -72,6 +91,10 @@ public class PerformanceState {
         return intervalThroughput;
     }
 
+    public double getIntervalAvgLatency() {
+        return intervalAvgLatency;
+    }
+
     public long getIntervalPercentileLatency() {
         return intervalPercentileLatency;
     }
@@ -86,6 +109,7 @@ public class PerformanceState {
                 + "operationCount=" + operationCount
                 + ", intervalThroughput=" + intervalThroughput
                 + ", totalThroughput=" + totalThroughput
+                + ", intervalAvgLatency=" + intervalAvgLatency
                 + ", intervalPercentileLatency=" + intervalPercentileLatency
                 + ", intervalMaxLatency=" + intervalMaxLatency
                 + '}';

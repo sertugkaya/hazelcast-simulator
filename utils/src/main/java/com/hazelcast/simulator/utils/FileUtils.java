@@ -47,7 +47,7 @@ import static java.lang.String.format;
 @SuppressFBWarnings({"DM_DEFAULT_ENCODING"})
 public final class FileUtils {
 
-    static final String USER_HOME = System.getProperty("user.home");
+    public static final String USER_HOME = System.getProperty("user.home");
 
     private static final int READ_BUFFER_SIZE = 8192;
     private static final int COPY_BUFFER_SIZE = 1024;
@@ -301,6 +301,9 @@ public final class FileUtils {
     }
 
     public static void rename(File source, File target) {
+        if (!source.exists()) {
+            return;
+        }
         if (!source.renameTo(target)) {
             throw new FileUtilsException(format("Could not rename [%s] to [%s]",
                     source.getAbsolutePath(), target.getAbsolutePath()));
@@ -339,7 +342,7 @@ public final class FileUtils {
     public static File getFile(OptionSpec<String> spec, OptionSet options, String desc) {
         File file = newFile(options.valueOf(spec));
         if (!file.exists()) {
-            throw new FileUtilsException(format("%s [%s] does not exist%n", desc, file));
+            throw new FileUtilsException(format("%s [%s] does not exist", desc, file));
         }
         return file;
     }
@@ -350,7 +353,7 @@ public final class FileUtils {
             file = newFile(baseDir + File.separator + "conf" + File.separator + fileName);
         }
         if (!file.exists()) {
-            throw new FileUtilsException(format("%s [%s] does not exist%n", desc, file.getAbsolutePath()));
+            throw new FileUtilsException(format("%s [%s] does not exist", desc, file.getAbsolutePath()));
         }
         LOGGER.info("Loading " + desc + ": " + file.getAbsolutePath());
 

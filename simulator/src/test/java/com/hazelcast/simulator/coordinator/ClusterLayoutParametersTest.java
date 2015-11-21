@@ -1,26 +1,35 @@
 package com.hazelcast.simulator.coordinator;
 
+import com.hazelcast.simulator.cluster.WorkerConfigurationConverter;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Mockito.mock;
 
 public class ClusterLayoutParametersTest {
 
+    private WorkerConfigurationConverter converter = mock(WorkerConfigurationConverter.class);
+
     @Test
     public void testConstructor() {
-        ClusterLayoutParameters clusterLayoutParameters = new ClusterLayoutParameters(1, 3, 5);
+        ClusterLayoutParameters clusterLayoutParameters = new ClusterLayoutParameters(null, converter, 1, 3, 5, 10);
 
-        assertEquals(1, clusterLayoutParameters.getDedicatedMemberMachineCount());
+        assertNull(clusterLayoutParameters.getClusterConfiguration());
+        assertEquals(converter, clusterLayoutParameters.getWorkerConfigurationConverter());
+        assertEquals(1, clusterLayoutParameters.getMemberWorkerCount());
         assertEquals(3, clusterLayoutParameters.getClientWorkerCount());
-        assertEquals(5, clusterLayoutParameters.getMemberWorkerCount());
+        assertEquals(5, clusterLayoutParameters.getDedicatedMemberMachineCount());
     }
 
     @Test
-    public void testInitMemberCount() {
-        ClusterLayoutParameters clusterLayoutParameters = new ClusterLayoutParameters(1, 3, -1);
-        assertEquals(-1, clusterLayoutParameters.getMemberWorkerCount());
+    public void testConstructor_withNegativeMemberCount() {
+        ClusterLayoutParameters clusterLayoutParameters = new ClusterLayoutParameters(null, converter, -1, 3, 5, 10);
 
-        clusterLayoutParameters.initMemberWorkerCount(10);
+        assertNull(clusterLayoutParameters.getClusterConfiguration());
+        assertEquals(converter, clusterLayoutParameters.getWorkerConfigurationConverter());
         assertEquals(10, clusterLayoutParameters.getMemberWorkerCount());
+        assertEquals(3, clusterLayoutParameters.getClientWorkerCount());
+        assertEquals(5, clusterLayoutParameters.getDedicatedMemberMachineCount());
     }
 }

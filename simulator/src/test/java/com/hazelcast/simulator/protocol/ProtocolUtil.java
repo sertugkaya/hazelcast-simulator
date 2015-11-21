@@ -5,7 +5,7 @@ import com.hazelcast.simulator.agent.workerjvm.WorkerJvmManager;
 import com.hazelcast.simulator.coordinator.FailureContainer;
 import com.hazelcast.simulator.coordinator.PerformanceStateContainer;
 import com.hazelcast.simulator.coordinator.TestHistogramContainer;
-import com.hazelcast.simulator.protocol.configuration.ClientConfiguration;
+import com.hazelcast.simulator.coordinator.TestPhaseListenerContainer;
 import com.hazelcast.simulator.protocol.connector.AgentConnector;
 import com.hazelcast.simulator.protocol.connector.CoordinatorConnector;
 import com.hazelcast.simulator.protocol.connector.ServerConnector;
@@ -18,24 +18,20 @@ import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.exception.ExceptionLogger;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
-import com.hazelcast.simulator.protocol.processors.OperationProcessor;
 import com.hazelcast.simulator.protocol.processors.TestOperationProcessor;
 import com.hazelcast.simulator.utils.ThreadSpawner;
 import com.hazelcast.simulator.worker.WorkerType;
 import com.hazelcast.util.ExceptionUtil;
-import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicReference;
 
+import static com.hazelcast.simulator.TestEnvironmentUtils.deleteLogs;
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
-import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -52,8 +48,6 @@ class ProtocolUtil {
     private static final int WORKER_START_PORT = 11100;
 
     private static final Logger LOGGER = Logger.getLogger(ProtocolUtil.class);
-    private static final Logger ROOT_LOGGER = Logger.getRootLogger();
-    private static final AtomicReference<Level> LOGGER_LEVEL = new AtomicReference<Level>();
 
     private static final AddressLevel MIN_ADDRESS_LEVEL = AddressLevel.AGENT;
     private static final int MIN_ADDRESS_LEVEL_VALUE = MIN_ADDRESS_LEVEL.toInt();
@@ -65,19 +59,6 @@ class ProtocolUtil {
     private static CoordinatorConnector coordinatorConnector;
     private static List<AgentConnector> agentConnectors = new ArrayList<AgentConnector>();
     private static List<WorkerConnector> workerConnectors = new ArrayList<WorkerConnector>();
-
-    static void setLogLevel(Level level) {
-        if (LOGGER_LEVEL.compareAndSet(null, ROOT_LOGGER.getLevel())) {
-            ROOT_LOGGER.setLevel(level);
-        }
-    }
-
-    static void resetLogLevel() {
-        Level level = LOGGER_LEVEL.get();
-        if (level != null && LOGGER_LEVEL.compareAndSet(level, null)) {
-            ROOT_LOGGER.setLevel(level);
-        }
-    }
 
     static void startSimulatorComponents(int numberOfAgents, int numberOfWorkers, int numberOfTests) {
         try {
@@ -112,7 +93,7 @@ class ProtocolUtil {
         LOGGER.info("Waiting for shutdown threads...");
         spawner.awaitCompletion();
 
-        deleteQuiet(new File("./logs"));
+        deleteLogs();
         LOGGER.info("Shutdown complete!");
     }
 
@@ -140,8 +121,9 @@ class ProtocolUtil {
         WorkerConnector workerConnector = WorkerConnector.createInstance(parentAddressIndex, addressIndex, port,
                 WorkerType.MEMBER, null, null, true);
 
-        OperationProcessor processor = new TestOperationProcessor(EXCEPTION_LOGGER);
         for (int testIndex = 1; testIndex <= numberOfTests; testIndex++) {
+            TestOperationProcessor processor = new TestOperationProcessor(EXCEPTION_LOGGER, null, WorkerType.MEMBER, testIndex,
+                    "ProtocolUtilTest", null, workerConnector.getAddress().getChild(testIndex));
             workerConnector.addTest(testIndex, processor);
         }
 
@@ -165,11 +147,12 @@ class ProtocolUtil {
     }
 
     static CoordinatorConnector startCoordinator(String agentHost, int agentStartPort, int numberOfAgents) {
+        TestPhaseListenerContainer testPhaseListenerContainer = new TestPhaseListenerContainer();
         PerformanceStateContainer performanceStateContainer = new PerformanceStateContainer();
         TestHistogramContainer testHistogramContainer = new TestHistogramContainer(performanceStateContainer);
         FailureContainer failureContainer = new FailureContainer("ProtocolUtil", null);
-        CoordinatorConnector coordinatorConnector = new CoordinatorConnector(performanceStateContainer, testHistogramContainer,
-                failureContainer);
+        CoordinatorConnector coordinatorConnector = new CoordinatorConnector(testPhaseListenerContainer,
+                performanceStateContainer, testHistogramContainer, failureContainer);
         for (int i = 1; i <= numberOfAgents; i++) {
             coordinatorConnector.addAgent(i, agentHost, agentStartPort + i);
         }
@@ -245,14 +228,7 @@ class ProtocolUtil {
     static void assertEmptyFutureMaps() {
         LOGGER.info("Asserting that all future maps are empty...");
 
-        for (ClientConfiguration configuration : coordinatorConnector.getConfigurationList()) {
-            ConcurrentMap<String, ResponseFuture> futureMap = configuration.getFutureMap();
-            int futureMapSize = futureMap.size();
-            if (futureMapSize > 0) {
-                LOGGER.error("Future entries: " + futureMap.toString());
-                fail(format("FutureMap of ClientConnector %s is not empty", configuration.getRemoteAddress()));
-            }
-        }
+        coordinatorConnector.assertEmptyFutureMaps();
         assertEmptyFutureMaps(agentConnectors, "AgentConnector");
         assertEmptyFutureMaps(workerConnectors, "WorkerConnector");
 
@@ -261,7 +237,7 @@ class ProtocolUtil {
 
     private static <C extends ServerConnector> void assertEmptyFutureMaps(List<C> connectorList, String connectorName) {
         for (C connector : connectorList) {
-            ConcurrentMap<String, ResponseFuture> futureMap = connector.getConfiguration().getFutureMap();
+            ConcurrentMap<String, ResponseFuture> futureMap = connector.getFutureMap();
             int futureMapSize = futureMap.size();
             if (futureMapSize > 0) {
                 LOGGER.error("Future entries: " + futureMap.toString());

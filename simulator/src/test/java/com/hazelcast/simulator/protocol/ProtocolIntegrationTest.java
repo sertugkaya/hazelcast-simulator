@@ -9,6 +9,7 @@ import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
 import com.hazelcast.simulator.protocol.operation.LogOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
+import com.hazelcast.simulator.protocol.processors.TestOperationProcessor;
 import com.hazelcast.simulator.utils.AssertTask;
 import org.apache.log4j.Level;
 import org.junit.After;
@@ -16,6 +17,8 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import static com.hazelcast.simulator.TestEnvironmentUtils.resetLogLevel;
+import static com.hazelcast.simulator.TestEnvironmentUtils.setLogLevel;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.DEFAULT_OPERATION;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.DEFAULT_TEST_TIMEOUT_MILLIS;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.assertAllTargets;
@@ -24,9 +27,7 @@ import static com.hazelcast.simulator.protocol.ProtocolUtil.assertSingleTarget;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.getAgentConnector;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.getCoordinatorConnector;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.getWorkerConnector;
-import static com.hazelcast.simulator.protocol.ProtocolUtil.resetLogLevel;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.sendFromCoordinator;
-import static com.hazelcast.simulator.protocol.ProtocolUtil.setLogLevel;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.startSimulatorComponents;
 import static com.hazelcast.simulator.protocol.ProtocolUtil.stopSimulatorComponents;
 import static com.hazelcast.simulator.protocol.core.AddressLevel.AGENT;
@@ -39,6 +40,7 @@ import static com.hazelcast.simulator.protocol.core.ResponseType.SUCCESS;
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
 import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 public class ProtocolIntegrationTest {
 
@@ -308,6 +310,28 @@ public class ProtocolIntegrationTest {
         SimulatorOperation operation = new LogOperation("Please log me on " + destination + '!', Level.FATAL);
 
         Response response = worker.write(source, destination, operation);
+
+        assertSingleTarget(response, source, destination, ResponseType.SUCCESS);
+    }
+
+    @Test
+    public void test_workerConnector_getTest() {
+        WorkerConnector worker = getWorkerConnector(0);
+        TestOperationProcessor processor = worker.getTest(1);
+
+        assertNotNull(processor);
+    }
+
+    @Test
+    public void test_WorkerConnector_submitFromTest() throws Exception {
+        WorkerConnector worker = getWorkerConnector(0);
+        SimulatorAddress source = worker.getAddress().getChild(1);
+        SimulatorAddress destination = COORDINATOR;
+
+        SimulatorOperation operation = new LogOperation("Please log me on " + destination + '!', Level.FATAL);
+
+        ResponseFuture responseFuture = worker.submitFromTest(source, destination, operation);
+        Response response = responseFuture.get();
 
         assertSingleTarget(response, source, destination, ResponseType.SUCCESS);
     }

@@ -11,27 +11,41 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.simulator.TestEnvironmentUtils.createAgentsFileWithLocalhost;
+import static com.hazelcast.simulator.TestEnvironmentUtils.deleteAgentsFile;
+import static com.hazelcast.simulator.TestEnvironmentUtils.resetUserDir;
+import static com.hazelcast.simulator.TestEnvironmentUtils.setDistributionUserDir;
 import static com.hazelcast.simulator.utils.FileUtils.appendText;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
+import static com.hazelcast.simulator.utils.FileUtils.writeText;
+import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class CoordinatorCliTest {
 
-    private static String userDir;
-    private static File agentsFile;
+    private static final String HAZELCAST_XML = "<hazelcast xsi:schemaLocation=\"http://www.hazelcast.com/schema/config"
+            + NEW_LINE + "  http://www.hazelcast.com/schema/config/hazelcast-config-3.6.xsd\""
+            + NEW_LINE + "  xmlns=\"http://www.hazelcast.com/schema/config\""
+            + NEW_LINE + "  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" />";
+
+    private static final String CLUSTER_XML
+            = "<clusterConfiguration>"
+            + NEW_LINE + "\t<workerConfiguration name=\"test\" type=\"MEMBER\"/>"
+            + NEW_LINE + "\t<nodeConfiguration>"
+            + NEW_LINE + "\t\t<workerGroup configuration=\"test\" count=\"1\"/>"
+            + NEW_LINE + "\t</nodeConfiguration>"
+            + NEW_LINE + "</clusterConfiguration>";
+
     private static File testSuiteFile;
 
     private final List<String> args = new ArrayList<String>();
 
     @BeforeClass
     public static void setUp() throws Exception {
-        userDir = System.getProperty("user.dir");
-        System.setProperty("user.dir", "./dist/src/main/dist");
-
-        agentsFile = new File("agents.txt");
-        appendText("127.0.0.1", agentsFile);
+        setDistributionUserDir();
+        createAgentsFileWithLocalhost();
 
         testSuiteFile = new File("test.properties");
         appendText("# CoordinatorCliTest", testSuiteFile);
@@ -39,22 +53,14 @@ public class CoordinatorCliTest {
 
     @AfterClass
     public static void tearDown() {
-        System.setProperty("user.dir", userDir);
+        resetUserDir();
+        deleteAgentsFile();
 
-        deleteQuiet(agentsFile);
         deleteQuiet(testSuiteFile);
     }
 
     @Test(expected = CommandLineExitException.class)
     public void testInit_noDuration_noWaitForTestCase() {
-        createCoordinator();
-    }
-
-    @Test(expected = CommandLineExitException.class)
-    public void testInit_duration_noParameter() {
-        args.add("--duration");
-        args.add("--parallel");
-
         createCoordinator();
     }
 
@@ -165,6 +171,17 @@ public class CoordinatorCliTest {
         assertEquals("*.jar", coordinator.getCoordinatorParameters().getWorkerClassPath());
     }
 
+    @Test
+    public void testInit_dedicatedMemberMachines() {
+        args.add("--waitForTestCaseCompletion");
+        args.add("--dedicatedMemberMachines");
+        args.add("1");
+
+        Coordinator coordinator = createCoordinator();
+
+        assertEquals(1, coordinator.getClusterLayoutParameters().getDedicatedMemberMachineCount());
+    }
+
     @Test(expected = CommandLineExitException.class)
     public void testInit_dedicatedMemberMachines_negativeValue() {
         args.add("--waitForTestCaseCompletion");
@@ -174,15 +191,15 @@ public class CoordinatorCliTest {
         createCoordinator();
     }
 
-    @Test
-    public void testInit_dedicatedMemberMachines() {
+    @Test(expected = CommandLineExitException.class)
+    public void testInit_noWorkersDefined() {
         args.add("--waitForTestCaseCompletion");
-        args.add("--dedicatedMemberMachines");
-        args.add("2");
+        args.add("--memberWorkerCount");
+        args.add("0");
+        args.add("--clientWorkerCount");
+        args.add("0");
 
-        Coordinator coordinator = createCoordinator();
-
-        assertEquals(2, coordinator.getClusterLayoutParameters().getDedicatedMemberMachineCount());
+        createCoordinator();
     }
 
     @Test(expected = CommandLineExitException.class)
@@ -254,6 +271,62 @@ public class CoordinatorCliTest {
         Coordinator coordinator = createCoordinator();
 
         assertEquals(TestPhase.LOCAL_VERIFY, coordinator.getCoordinatorParameters().getLastTestPhaseToSync());
+    }
+
+    @Test
+    public void testInit_git() {
+        args.add("--waitForTestCaseCompletion");
+        args.add("--git");
+        args.add("sha123456");
+
+        Coordinator coordinator = createCoordinator();
+
+        assertEquals("git=sha123456", coordinator.getCoordinatorParameters().getSimulatorProperties().getHazelcastVersionSpec());
+    }
+
+    @Test
+    public void testInit_memberConfigFileInWorkDir() {
+        File memberConfigFile = new File("hazelcast.xml").getAbsoluteFile();
+        writeText(HAZELCAST_XML, memberConfigFile);
+
+        try {
+            args.add("--waitForTestCaseCompletion");
+
+            Coordinator coordinator = createCoordinator();
+            assertEquals(HAZELCAST_XML, coordinator.getWorkerParameters().getMemberHzConfig());
+        } finally {
+            deleteQuiet(memberConfigFile);
+        }
+    }
+
+    @Test
+    public void testInit_clientConfigFileInWorkDir() {
+        File clientConfigFile = new File("client-hazelcast.xml").getAbsoluteFile();
+        writeText(HAZELCAST_XML, clientConfigFile);
+
+        try {
+            args.add("--waitForTestCaseCompletion");
+
+            Coordinator coordinator = createCoordinator();
+            assertEquals(HAZELCAST_XML, coordinator.getWorkerParameters().getClientHzConfig());
+        } finally {
+            deleteQuiet(clientConfigFile);
+        }
+    }
+
+    @Test
+    public void testInit_clusterConfigFileInWorkDir() {
+        File clusterConfigFile = new File("cluster.xml").getAbsoluteFile();
+        writeText(CLUSTER_XML, clusterConfigFile);
+
+        try {
+            args.add("--waitForTestCaseCompletion");
+
+            Coordinator coordinator = createCoordinator();
+            assertEquals(CLUSTER_XML, coordinator.getClusterLayoutParameters().getClusterConfiguration());
+        } finally {
+            deleteQuiet(clusterConfigFile);
+        }
     }
 
     private Coordinator createCoordinator() {

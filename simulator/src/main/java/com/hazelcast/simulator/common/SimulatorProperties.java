@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.common;
 
 import com.hazelcast.simulator.utils.CommandLineExitException;
@@ -15,6 +30,7 @@ import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static com.hazelcast.simulator.utils.FileUtils.newFile;
 import static com.hazelcast.simulator.utils.jars.HazelcastJARs.GIT_VERSION_PREFIX;
 import static com.hazelcast.simulator.utils.jars.HazelcastJARs.OUT_OF_THE_BOX;
+import static java.lang.Integer.parseInt;
 import static java.lang.String.format;
 
 /**
@@ -35,10 +51,10 @@ public class SimulatorProperties {
     private String forcedHazelcastVersionSpec;
 
     public SimulatorProperties() {
-        File defaultPropsFile = newFile(getSimulatorHome(), "conf", PROPERTIES_FILE_NAME);
-        LOGGER.debug(format("Loading default %s from: %s", PROPERTIES_FILE_NAME, defaultPropsFile.getAbsolutePath()));
-        check(defaultPropsFile);
-        load(defaultPropsFile);
+        File defaultPropertiesFile = newFile(getSimulatorHome(), "conf", PROPERTIES_FILE_NAME);
+        LOGGER.debug(format("Loading default %s from: %s", PROPERTIES_FILE_NAME, defaultPropertiesFile.getAbsolutePath()));
+        check(defaultPropertiesFile);
+        load(defaultPropertiesFile);
     }
 
     /**
@@ -98,6 +114,18 @@ public class SimulatorProperties {
         } else {
             return forcedHazelcastVersionSpec;
         }
+    }
+
+    public int getAgentPort() {
+        return parseInt(get("AGENT_PORT", "9000"));
+    }
+
+    public int getHazelcastPort() {
+        return parseInt(get("HAZELCAST_PORT", "5701"));
+    }
+
+    public int getHazelcastPortRangeSize() {
+        return parseInt(get("HAZELCAST_PORT_RANGE_SIZE", "50"));
     }
 
     public String get(String name) {

@@ -5,11 +5,10 @@ import com.hazelcast.simulator.utils.CommandLineExitException;
 import org.junit.After;
 import org.junit.Test;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
+import static com.hazelcast.simulator.TestEnvironmentUtils.deleteLogs;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -25,7 +24,7 @@ public class AgentCliTest {
         if (agent != null) {
             agent.shutdown();
         }
-        deleteQuiet(new File("./logs"));
+        deleteLogs();
     }
 
     @Test
@@ -34,6 +33,8 @@ public class AgentCliTest {
         args.add("5");
         args.add("--publicAddress");
         args.add("127.0.0.1");
+        args.add("--port");
+        args.add("9000");
 
         agent = createAgent();
 
@@ -50,6 +51,8 @@ public class AgentCliTest {
     public void testInit_missingAddressIndex() {
         args.add("--publicAddress");
         args.add("127.0.0.1");
+        args.add("--port");
+        args.add("9000");
 
         createAgent();
     }
@@ -58,6 +61,18 @@ public class AgentCliTest {
     public void testInit_missingPublicAddress() {
         args.add("--addressIndex");
         args.add("1");
+        args.add("--port");
+        args.add("9000");
+
+        createAgent();
+    }
+
+    @Test(expected = CommandLineExitException.class)
+    public void testInit_missingPort() {
+        args.add("--addressIndex");
+        args.add("1");
+        args.add("--publicAddress");
+        args.add("127.0.0.1");
 
         createAgent();
     }

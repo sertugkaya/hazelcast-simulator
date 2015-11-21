@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.concurrent.lock;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -39,17 +54,17 @@ public class LockTest {
     private TestContext testContext;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         targetInstance = testContext.getTargetInstance();
 
-        lockCounter = targetInstance.getAtomicLong(testContext.getTestId() + ":LockCounter");
-        totalMoney = targetInstance.getAtomicLong(testContext.getTestId() + ":TotalMoney");
+        lockCounter = targetInstance.getAtomicLong(basename + ":LockCounter");
+        totalMoney = targetInstance.getAtomicLong(basename + ":TotalMoney");
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
-        for (int k = 0; k < lockCount; k++) {
+    public void warmup() {
+        for (int i = 0; i < lockCount; i++) {
             long key = lockCounter.getAndIncrement();
             targetInstance.getLock(getLockId(key));
             IAtomicLong account = targetInstance.getAtomicLong(getAccountId(key));
@@ -60,19 +75,19 @@ public class LockTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
-        for (int k = 0; k < threadCount; k++) {
+        ThreadSpawner spawner = new ThreadSpawner(basename);
+        for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new Worker());
         }
         spawner.awaitCompletion();
     }
 
     private String getLockId(long key) {
-        return basename + '-' + testContext.getTestId() + '-' + key;
+        return basename + '-' + key;
     }
 
     private String getAccountId(long key) {
-        return basename + '-' + testContext.getTestId() + '-' + key;
+        return basename + '-' + key;
     }
 
     @Verify
@@ -92,7 +107,7 @@ public class LockTest {
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         lockCounter.destroy();
         totalMoney.destroy();
 

@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.config.Config;
@@ -19,6 +34,7 @@ import java.util.Random;
 import java.util.Set;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isMemberNode;
+import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
@@ -38,7 +54,6 @@ public class MapDataIntegrityTest {
 
     private TestContext testContext;
     private HazelcastInstance targetInstance;
-    private String testId;
 
     private IMap<Integer, byte[]> integrityMap;
     private IMap<Integer, byte[]> stressMap;
@@ -47,10 +62,9 @@ public class MapDataIntegrityTest {
     private byte[] value;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         targetInstance = testContext.getTargetInstance();
-        testId = testContext.getTestId();
 
         integrityMap = targetInstance.getMap(basename + "Integrity");
         stressMap = targetInstance.getMap(basename + "Stress");
@@ -66,10 +80,10 @@ public class MapDataIntegrityTest {
             final Set<Partition> partitionSet = partitionService.getPartitions();
             for (Partition partition : partitionSet) {
                 while (partition.getOwner() == null) {
-                    Thread.sleep(1000);
+                    sleepSeconds(1);
                 }
             }
-            LOGGER.info(testId + ": " + partitionSet.size() + " partitions");
+            LOGGER.info(basename + ": " + partitionSet.size() + " partitions");
 
             Member localMember = targetInstance.getCluster().getLocalMember();
             for (int i = 0; i < totalIntegrityKeys; i++) {
@@ -78,39 +92,39 @@ public class MapDataIntegrityTest {
                     integrityMap.put(i, value);
                 }
             }
-            LOGGER.info(testId + ": integrityMap=" + integrityMap.getName() + " size=" + integrityMap.size());
+            LOGGER.info(basename + ": integrityMap=" + integrityMap.getName() + " size=" + integrityMap.size());
 
             Config config = targetInstance.getConfig();
             MapConfig mapConfig = config.getMapConfig(integrityMap.getName());
-            LOGGER.info(testId + ": " + mapConfig);
+            LOGGER.info(basename + ": " + mapConfig);
         }
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         if (isMemberNode(targetInstance)) {
-            LOGGER.info(testId + ": cluster size =" + targetInstance.getCluster().getMembers().size());
+            LOGGER.info(basename + ": cluster size =" + targetInstance.getCluster().getMembers().size());
         }
 
-        LOGGER.info(testId + ": integrityMap=" + integrityMap.getName() + " size=" + integrityMap.size());
+        LOGGER.info(basename + ": integrityMap=" + integrityMap.getName() + " size=" + integrityMap.size());
         int totalErrorCount = 0;
         int totalNullValueCount = 0;
         for (MapIntegrityThread integrityThread : integrityThreads) {
             totalErrorCount += integrityThread.sizeErrorCount;
             totalNullValueCount += integrityThread.nullValueCount;
         }
-        LOGGER.info(testId + ": total integrityMapSizeErrorCount=" + totalErrorCount);
-        LOGGER.info(testId + ": total integrityMapNullValueCount=" + totalNullValueCount);
+        LOGGER.info(basename + ": total integrityMapSizeErrorCount=" + totalErrorCount);
+        LOGGER.info(basename + ": total integrityMapNullValueCount=" + totalNullValueCount);
 
-        assertEquals(testId + ": (verify) integrityMap=" + integrityMap.getName() + " map size ", totalIntegrityKeys,
+        assertEquals(basename + ": (verify) integrityMap=" + integrityMap.getName() + " map size ", totalIntegrityKeys,
                 integrityMap.size());
-        assertEquals(testId + ": (verify) integrityMapSizeErrorCount=", 0, totalErrorCount);
-        assertEquals(testId + ": (verify) integrityMapNullValueCount=", 0, totalNullValueCount);
+        assertEquals(basename + ": (verify) integrityMapSizeErrorCount=", 0, totalErrorCount);
+        assertEquals(basename + ": (verify) integrityMapNullValueCount=", 0, totalNullValueCount);
     }
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         for (int i = 0; i < mapIntegrityThreadCount; i++) {
             integrityThreads[i] = new MapIntegrityThread();
             spawner.spawn(integrityThreads[i]);
@@ -134,8 +148,8 @@ public class MapDataIntegrityTest {
                 byte[] val = integrityMap.get(key);
                 int actualSize = integrityMap.size();
                 if (doRunAsserts) {
-                    assertNotNull(testId + ": integrityMap=" + integrityMap.getName() + " key " + key + " == null", val);
-                    assertEquals(testId + ": integrityMap=" + integrityMap.getName() + " map size ",
+                    assertNotNull(basename + ": integrityMap=" + integrityMap.getName() + " key " + key + " == null", val);
+                    assertEquals(basename + ": integrityMap=" + integrityMap.getName() + " map size ",
                             totalIntegrityKeys, actualSize);
                 } else {
                     if (val == null) {

@@ -48,7 +48,7 @@ public class MapTTLSaturationTest {
     private IMap<Long, Long> map;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         map = testContext.getTargetInstance().getMap(basename);
     }
@@ -61,7 +61,7 @@ public class MapTTLSaturationTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new Worker());
         }
@@ -121,7 +121,7 @@ public class MapTTLSaturationTest {
     }
 
     @Verify(global = false)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         long free = Runtime.getRuntime().freeMemory();
         long total = Runtime.getRuntime().totalMemory();
         long used = total - free;

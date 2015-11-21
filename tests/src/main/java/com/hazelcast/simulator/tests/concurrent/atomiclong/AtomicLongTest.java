@@ -60,15 +60,14 @@ public class AtomicLongTest {
     private IAtomicLong[] counters;
 
     @Setup
-    public void setup(TestContext context) throws Exception {
-        targetInstance = context.getTargetInstance();
+    public void setup(TestContext testContext) {
+        targetInstance = testContext.getTargetInstance();
 
-        totalCounter = targetInstance.getAtomicLong("TotalCounter:" + context.getTestId());
+        totalCounter = targetInstance.getAtomicLong(basename + ":TotalCounter");
         counters = new IAtomicLong[countersLength];
 
-        String[] names = generateStringKeys(basename, countersLength, keyLocality, context.getTargetInstance());
-
-        for (int i = 0; i < counters.length; i++) {
+        String[] names = generateStringKeys(basename, countersLength, keyLocality, testContext.getTargetInstance());
+        for (int i = 0; i < countersLength; i++) {
             counters[i] = targetInstance.getAtomicLong(names[i]);
         }
 
@@ -77,7 +76,7 @@ public class AtomicLongTest {
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         for (IAtomicLong counter : counters) {
             counter.destroy();
         }

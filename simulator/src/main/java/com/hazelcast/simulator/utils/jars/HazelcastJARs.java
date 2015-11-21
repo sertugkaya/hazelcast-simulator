@@ -1,7 +1,22 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.utils.jars;
 
 import com.hazelcast.simulator.common.SimulatorProperties;
-import com.hazelcast.simulator.provisioner.Bash;
+import com.hazelcast.simulator.utils.Bash;
 import com.hazelcast.simulator.utils.CommandLineExitException;
 import com.hazelcast.simulator.utils.FileUtilsException;
 import org.apache.log4j.Logger;
@@ -9,11 +24,13 @@ import org.apache.log4j.Logger;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.hazelcast.simulator.utils.CommonUtils.getSimulatorVersion;
+import static com.hazelcast.simulator.utils.FileUtils.USER_HOME;
 import static com.hazelcast.simulator.utils.FileUtils.copyFilesToDirectory;
 import static com.hazelcast.simulator.utils.FileUtils.ensureExistingDirectory;
 import static com.hazelcast.simulator.utils.FileUtils.getText;
@@ -38,15 +55,17 @@ public class HazelcastJARs {
     private final Bash bash;
     private final GitSupport gitSupport;
 
-    HazelcastJARs(Bash bash, GitSupport gitSupport, String versionSpec) {
+    HazelcastJARs(Bash bash, GitSupport gitSupport) {
         this.bash = bash;
         this.gitSupport = gitSupport;
-
-        addVersionSpec(versionSpec);
     }
 
-    public static HazelcastJARs newInstance(Bash bash, SimulatorProperties properties) {
-        return new HazelcastJARs(bash, GitSupport.newInstance(bash, properties), properties.getHazelcastVersionSpec());
+    public static HazelcastJARs newInstance(Bash bash, SimulatorProperties properties, Set<String> versionSpecs) {
+        HazelcastJARs hazelcastJARs = new HazelcastJARs(bash, GitSupport.newInstance(bash, properties));
+        for (String versionSpec : versionSpecs) {
+            hazelcastJARs.addVersionSpec(versionSpec);
+        }
+        return hazelcastJARs;
     }
 
     public static String directoryForVersionSpec(String versionSpec) {
@@ -65,14 +84,8 @@ public class HazelcastJARs {
         }
     }
 
-    public void purge(String ip) {
-        bash.sshQuiet(ip, format("rm -rf hazelcast-simulator-%s/hz-lib", getSimulatorVersion()));
-    }
-
-    public void upload(String ip, String simulatorHome) {
-        for (Map.Entry<String, File> stringFileEntry : versionSpecDirs.entrySet()) {
-            String versionSpec = stringFileEntry.getKey();
-
+    public void upload(String ip, String simulatorHome, Set<String> versionSpecs) {
+        for (String versionSpec : versionSpecs) {
             // create target directory
             String versionDir = directoryForVersionSpec(versionSpec);
             if (versionDir != null) {
@@ -81,22 +94,28 @@ public class HazelcastJARs {
 
             if (OUT_OF_THE_BOX.equals(versionSpec)) {
                 // upload Hazelcast JARs
-                bash.uploadToAgentSimulatorDir(ip, simulatorHome + "/lib/hazelcast*", "hz-lib/outofthebox");
+                bash.uploadToRemoteSimulatorDir(ip, simulatorHome + "/lib/hazelcast*", "hz-lib/outofthebox");
             } else if (!BRING_MY_OWN.equals(versionSpec)) {
                 // upload the actual Hazelcast JARs that are going to be used by the worker
-                bash.uploadToAgentSimulatorDir(ip, stringFileEntry.getValue() + "/*.jar", "hz-lib/" + versionDir);
+                File versionSpecDir = versionSpecDirs.get(versionSpec);
+                bash.uploadToRemoteSimulatorDir(ip, versionSpecDir + "/*.jar", "hz-lib/" + versionDir);
             }
         }
+    }
+
+    void addVersionSpec(String versionSpec) {
+        File tmpDir = new File(System.getProperty("java.io.tmpdir"));
+        versionSpecDirs.put(versionSpec, new File(tmpDir, "hazelcastjars-" + UUID.randomUUID().toString()).getAbsoluteFile());
+    }
+
+    // just for testing
+    Set<String> getVersionSpecs() {
+        return versionSpecDirs.keySet();
     }
 
     // just for testing
     String getAbsolutePath(String versionSpec) {
         return versionSpecDirs.get(versionSpec).getAbsolutePath();
-    }
-
-    private void addVersionSpec(String versionSpec) {
-        File tmpDir = new File(System.getProperty("java.io.tmpdir"));
-        versionSpecDirs.put(versionSpec, new File(tmpDir, "hazelcastjars-" + UUID.randomUUID().toString()).getAbsoluteFile());
     }
 
     private void prepare(String versionSpec, File targetDir, boolean prepareEnterpriseJARs) {
@@ -154,8 +173,7 @@ public class HazelcastJARs {
     }
 
     File getArtifactFile(String artifact, String version) {
-        File userHome = new File(System.getProperty("user.home"));
-        File repositoryDir = newFile(userHome, ".m2", "repository");
+        File repositoryDir = newFile(USER_HOME, ".m2", "repository");
         return newFile(repositoryDir, "com", "hazelcast", artifact, version, format("%s-%s.jar", artifact, version));
     }
 

@@ -22,7 +22,6 @@ import com.hazelcast.core.IExecutorService;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
@@ -34,10 +33,10 @@ import java.io.Serializable;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static com.hazelcast.simulator.utils.TestUtils.getUserContextKeyFromTestId;
 import static org.junit.Assert.assertEquals;
 
@@ -59,17 +58,17 @@ public class ExecutorTest {
     private TestContext testContext;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         HazelcastInstance targetInstance = testContext.getTargetInstance();
 
         executors = new IExecutorService[executorCount];
         for (int i = 0; i < executors.length; i++) {
-            executors[i] = targetInstance.getExecutorService(basename + '-' + testContext.getTestId() + '-' + i);
+            executors[i] = targetInstance.getExecutorService(basename + '-' + i);
         }
 
-        executedCounter = targetInstance.getAtomicLong(testContext.getTestId() + ":ExecutedCounter");
-        expectedExecutedCounter = targetInstance.getAtomicLong(testContext.getTestId() + ":ExpectedExecutedCounter");
+        executedCounter = targetInstance.getAtomicLong(basename + ":ExecutedCounter");
+        expectedExecutedCounter = targetInstance.getAtomicLong(basename + ":ExpectedExecutedCounter");
     }
 
     @Teardown(global = true)
@@ -87,15 +86,15 @@ public class ExecutorTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
-        for (int k = 0; k < threadCount; k++) {
+        ThreadSpawner spawner = new ThreadSpawner(basename);
+        for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new Worker());
         }
         spawner.awaitCompletion();
     }
 
     @Verify
-    public void verify() throws Exception {
+    public void verify() {
         long actual = executedCounter.get();
         long expected = expectedExecutedCounter.get();
         assertEquals(expected, actual);
@@ -114,7 +113,7 @@ public class ExecutorTest {
                 IExecutorService executorService = executors[index];
                 futureList.clear();
 
-                for (int k = 0; k < submitCount; k++) {
+                for (int i = 0; i < submitCount; i++) {
                     Future future = executorService.submit(new Task(testContext.getTestId()));
                     futureList.add(future);
                     iteration++;
@@ -123,10 +122,8 @@ public class ExecutorTest {
                 for (Future future : futureList) {
                     try {
                         future.get();
-                    } catch (InterruptedException e) {
-                        throw new TestException(e);
-                    } catch (ExecutionException e) {
-                        throw new TestException(e);
+                    } catch (Exception e) {
+                        throw rethrow(e);
                     }
                 }
 

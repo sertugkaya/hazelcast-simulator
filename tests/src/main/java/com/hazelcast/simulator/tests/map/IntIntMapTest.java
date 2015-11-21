@@ -70,21 +70,21 @@ public class IntIntMapTest {
     private int[] keys;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         this.testContext = testContext;
-        map = testContext.getTargetInstance().getMap(basename + '-' + testContext.getTestId());
+        map = testContext.getTargetInstance().getMap(basename);
 
         operationSelectorBuilder.addOperation(Operation.PUT, putProb).addDefaultOperation(Operation.GET);
     }
 
     @Teardown
-    public void tearDown() throws Exception {
+    public void tearDown() {
         map.destroy();
         LOGGER.info(getOperationCountInformation(testContext.getTargetInstance()));
     }
 
     @Warmup(global = false)
-    public void warmup() throws InterruptedException {
+    public void warmup() {
         waitClusterSize(LOGGER, testContext.getTargetInstance(), minNumberOfMembers);
         keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
         Streamer<Integer, Integer> streamer = StreamerFactory.getInstance(map);

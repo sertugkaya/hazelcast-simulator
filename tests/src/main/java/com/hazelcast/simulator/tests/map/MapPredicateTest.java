@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -67,7 +82,7 @@ public class MapPredicateTest {
     private String baseAssertMessage;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         HazelcastInstance targetInstance = testContext.getTargetInstance();
         map = targetInstance.getMap(basename);
         operationCounterList = targetInstance.getList(basename + "OperationCounter");
@@ -96,7 +111,7 @@ public class MapPredicateTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         PredicateOperationCounter total = new PredicateOperationCounter();
         for (PredicateOperationCounter operationCounter : operationCounterList) {
             total.add(operationCounter);
@@ -121,8 +136,6 @@ public class MapPredicateTest {
 
         public Worker() {
             super(operationSelectorBuilder);
-
-            LOGGER.info("Starting worker: " + this + " for " + MapPredicateTest.class.getSimpleName());
         }
 
         @Override

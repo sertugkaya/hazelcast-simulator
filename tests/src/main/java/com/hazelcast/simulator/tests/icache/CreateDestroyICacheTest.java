@@ -15,7 +15,6 @@
  */
 package com.hazelcast.simulator.tests.icache;
 
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
@@ -29,7 +28,6 @@ import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractWorker;
 
 import javax.cache.Cache;
-import javax.cache.CacheException;
 import javax.cache.CacheManager;
 
 import static com.hazelcast.simulator.tests.icache.helpers.CacheUtils.createCacheManager;
@@ -61,7 +59,7 @@ public class CreateDestroyICacheTest {
     private CacheManager cacheManager;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
         counters = hazelcastInstance.getList(basename);
 
@@ -74,7 +72,7 @@ public class CreateDestroyICacheTest {
     }
 
     @Verify(global = true)
-    public void verify() throws Exception {
+    public void verify() {
         ICacheCreateDestroyCounter total = new ICacheCreateDestroyCounter();
         for (ICacheCreateDestroyCounter counter : counters) {
             total.add(counter);
@@ -91,13 +89,8 @@ public class CreateDestroyICacheTest {
 
         private final ICacheCreateDestroyCounter counter = new ICacheCreateDestroyCounter();
 
-        private final CacheConfig config;
-
         private Worker() {
             super(builder);
-
-            config = new CacheConfig();
-            config.setName(basename);
         }
 
         @Override
@@ -105,9 +98,9 @@ public class CreateDestroyICacheTest {
             switch (operation) {
                 case CREATE_CACHE:
                     try {
-                        cacheManager.createCache(basename, config);
+                        cacheManager.getCache(basename);
                         counter.create++;
-                    } catch (CacheException e) {
+                    } catch (IllegalStateException e) {
                         counter.createException++;
                     }
                     break;

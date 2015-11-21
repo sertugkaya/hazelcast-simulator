@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.worker.performance;
 
 import com.hazelcast.simulator.test.TestException;
@@ -31,6 +46,7 @@ final class PerformanceTracker {
 
     private Map<String, Histogram> intervalHistogramMap;
 
+    private double intervalAvgLatency;
     private long intervalPercentileLatency;
     private long intervalMaxLatency;
 
@@ -39,6 +55,8 @@ final class PerformanceTracker {
 
     private double intervalThroughput;
     private double totalThroughput;
+
+    private boolean isUpdated;
 
     PerformanceTracker(String testId, Collection<String> probeNames, long testStartedTimestamp) {
         throughputFile = new File("throughput-" + testId + ".txt");
@@ -64,11 +82,22 @@ final class PerformanceTracker {
         return intervalThroughput;
     }
 
-    void update(Map<String, Histogram> intervalHistograms, long intervalPercentileLatency, long intervalMaxLatency,
-                long intervalOperationCount, long currentTimestamp) {
+    public boolean isUpdated() {
+        return isUpdated;
+    }
+
+    public boolean getAndResetIsUpdated() {
+        boolean oldIsUpdated = isUpdated;
+        isUpdated = false;
+        return oldIsUpdated;
+    }
+
+    void update(Map<String, Histogram> intervalHistograms, long intervalPercentileLatency, double intervalAvgLatency,
+                long intervalMaxLatency, long intervalOperationCount, long currentTimestamp) {
         this.intervalHistogramMap = intervalHistograms;
 
         this.intervalPercentileLatency = intervalPercentileLatency;
+        this.intervalAvgLatency = intervalAvgLatency;
         this.intervalMaxLatency = intervalMaxLatency;
 
         this.intervalOperationCount = intervalOperationCount;
@@ -81,6 +110,7 @@ final class PerformanceTracker {
         this.totalThroughput = (totalOperationCount * ONE_SECOND_IN_MILLIS / (double) totalTimeDelta);
 
         this.lastTimestamp = currentTimestamp;
+        this.isUpdated = true;
     }
 
     void writeStatsToFile(String timestamp) {
@@ -97,7 +127,7 @@ final class PerformanceTracker {
 
     PerformanceState createPerformanceState() {
         return new PerformanceState(totalOperationCount, intervalThroughput, totalThroughput,
-                intervalPercentileLatency, intervalMaxLatency);
+                intervalAvgLatency, intervalPercentileLatency, intervalMaxLatency);
     }
 
     Map<String, String> aggregateIntervalHistograms(String testId) {

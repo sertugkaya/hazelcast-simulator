@@ -83,12 +83,10 @@
 
     <!-- Checks for Headers                                -->
     <!-- See http://checkstyle.sf.net/config_header.html   -->
-    <!--
     <module name="Header">
         <property name="headerFile" value="${main.basedir}/checkstyle/ClassHeader.txt"/>
         <property name="fileExtensions" value="java"/>
     </module>
-    -->
 
     <module name="TreeWalker">
         <!-- Activate comment suppression filters -->
@@ -283,7 +281,7 @@
             <property name="max" value="4"/>
         </module>
         <module name="ClassDataAbstractionCoupling">
-            <property name="max" value="15"/>
+            <property name="max" value="20"/>
         </module>
         <module name="ClassFanOutComplexity">
             <property name="max" value="40"/>

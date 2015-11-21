@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.protocol.handler;
 
 import com.hazelcast.simulator.protocol.connector.ClientConnector;
@@ -80,13 +95,13 @@ public class ForwardToWorkerHandler extends SimpleChannelInboundHandler<ByteBuf>
         } else {
             ClientConnector clientConnector = clientConnectorManager.get(workerAddressIndex);
             if (clientConnector == null) {
-                LOGGER.error(format("[%d] %s worker %d not found!", messageId, addressLevel, workerAddressIndex));
+                LOGGER.error(format("[%d] %s Worker %d not found!", messageId, addressLevel, workerAddressIndex));
                 response.addResponse(localAddress, FAILURE_WORKER_NOT_FOUND);
                 ctx.writeAndFlush(response);
                 return;
             }
             if (LOGGER.isTraceEnabled()) {
-                LOGGER.trace(format("[%d] %s forwarding message to worker %d", messageId, addressLevel, workerAddressIndex));
+                LOGGER.trace(format("[%d] %s forwarding message to Worker %d", messageId, addressLevel, workerAddressIndex));
             }
             buffer.retain();
             response.addResponse(clientConnector.write(buffer));
@@ -99,13 +114,13 @@ public class ForwardToWorkerHandler extends SimpleChannelInboundHandler<ByteBuf>
 
         ClientConnector clientConnector = clientConnectorManager.get(workerAddressIndex);
         if (clientConnector == null) {
-            LOGGER.error(format("[%d] %s worker %d not found!", messageId, addressLevel, workerAddressIndex));
+            LOGGER.error(format("[%d] %s Worker %d not found!", messageId, addressLevel, workerAddressIndex));
             ctx.writeAndFlush(new Response(messageId, localAddress, localAddress, FAILURE_WORKER_NOT_FOUND));
             return;
         }
 
         if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace(format("[%d] %s forwarding response to worker %d", messageId, addressLevel, workerAddressIndex));
+            LOGGER.trace(format("[%d] %s forwarding response to Worker %d", messageId, addressLevel, workerAddressIndex));
         }
         buffer.retain();
         clientConnector.forwardToChannel(buffer);

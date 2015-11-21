@@ -1,8 +1,22 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.agent.workerjvm;
 
 import com.hazelcast.simulator.agent.Agent;
 import com.hazelcast.simulator.agent.SpawnWorkerFailedException;
-import com.hazelcast.simulator.protocol.configuration.Ports;
 import com.hazelcast.simulator.protocol.core.AddressLevel;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.worker.WorkerType;
@@ -31,12 +45,10 @@ public class WorkerJvmLauncher {
 
     private static final int WAIT_FOR_WORKER_STARTUP_INTERVAL_MILLIS = 500;
 
-    private static final Logger LOGGER = Logger.getLogger(WorkerJvmLauncher.class);
-
     private static final String CLASSPATH = System.getProperty("java.class.path");
-    private static final File SIMULATOR_HOME = getSimulatorHome();
     private static final String CLASSPATH_SEPARATOR = System.getProperty("path.separator");
-    private static final String WORKERS_PATH = getSimulatorHome().getAbsolutePath() + "/workers";
+
+    private static final Logger LOGGER = Logger.getLogger(WorkerJvmLauncher.class);
 
     private final AtomicBoolean javaHomePrinted = new AtomicBoolean();
 
@@ -55,25 +67,26 @@ public class WorkerJvmLauncher {
     }
 
     public void launch() {
-        testSuiteDir = agent.getTestSuiteDir();
-        ensureExistingDirectory(testSuiteDir);
-
-        WorkerType type = workerJvmSettings.getWorkerType();
-        int workerIndex = workerJvmSettings.getWorkerIndex();
-        LOGGER.info(format("Starting a Java Virtual Machine for %s worker #%d", type, workerIndex));
-
         try {
+            testSuiteDir = agent.getTestSuiteDir();
+            ensureExistingDirectory(testSuiteDir);
+
+            WorkerType type = workerJvmSettings.getWorkerType();
+            int workerIndex = workerJvmSettings.getWorkerIndex();
+            LOGGER.info(format("Starting a Java Virtual Machine for %s Worker #%d", type, workerIndex));
+
             String hzConfigFileName = (type == WorkerType.MEMBER) ? "hazelcast" : "client-hazelcast";
             hzConfigFile = createTmpXmlFile(hzConfigFileName, workerJvmSettings.getHazelcastConfig());
             log4jFile = createTmpXmlFile("worker-log4j", workerJvmSettings.getLog4jConfig());
             LOGGER.info("Spawning Worker JVM using settings: " + workerJvmSettings);
 
             WorkerJvm worker = startWorkerJvm();
-            LOGGER.info(format("Finished starting a Java Virtual Machine for %s worker #%d", type, workerIndex));
+            LOGGER.info(format("Finished starting a JVM for %s Worker #%d", type, workerIndex));
 
             waitForWorkersStartup(worker, workerJvmSettings.getWorkerStartupTimeout());
-        } catch (IOException e) {
-            throw new SpawnWorkerFailedException("Failed to start worker", e);
+        } catch (Exception e) {
+            LOGGER.error("Failed to start Worker", e);
+            throw new SpawnWorkerFailedException("Failed to start Worker", e);
         }
     }
 
@@ -119,8 +132,9 @@ public class WorkerJvmLauncher {
     private void waitForWorkersStartup(WorkerJvm worker, int workerTimeoutSec) {
         for (int i = 0; i < workerTimeoutSec; i++) {
             if (hasExited(worker)) {
-                throw new SpawnWorkerFailedException(format("Startup failure: worker on host %s failed during startup,"
-                        + " check '%s/out.log' for more information!", agent.getPublicAddress(), worker.getWorkerHome()));
+                throw new SpawnWorkerFailedException(format(
+                        "Startup of Worker on host %s failed, check log files in %s for more information!",
+                        agent.getPublicAddress(), worker.getWorkerHome()));
             }
 
             String address = readAddress(worker);
@@ -160,20 +174,21 @@ public class WorkerJvmLauncher {
     }
 
     private void copyResourcesToWorkerId(String workerId) {
+        File workersDir = new File(getSimulatorHome(), "workers");
         String testSuiteId = agent.getTestSuite().getId();
-        File uploadDirectory = new File(WORKERS_PATH + '/' + testSuiteId + "/upload/");
+        File uploadDirectory = new File(workersDir, testSuiteId + "/upload/").getAbsoluteFile();
         if (!uploadDirectory.exists() || !uploadDirectory.isDirectory()) {
             LOGGER.debug("Skip copying upload directory to workers since no upload directory was found");
             return;
         }
         String copyCommand = format("cp -rfv %s/%s/upload/* %s/%s/%s/",
-                WORKERS_PATH,
+                workersDir,
                 testSuiteId,
-                WORKERS_PATH,
+                workersDir,
                 testSuiteId,
                 workerId);
         execute(copyCommand);
-        LOGGER.info(format("Finished copying '+%s+' to worker", WORKERS_PATH));
+        LOGGER.info(format("Finished copying '%s' to Worker", workersDir));
     }
 
     private boolean hasExited(WorkerJvm workerJvm) {
@@ -201,7 +216,7 @@ public class WorkerJvmLauncher {
         List<String> args = new LinkedList<String>();
 
         int workerIndex = workerJvmSettings.getWorkerIndex();
-        int workerPort = Ports.WORKER_START_PORT + workerIndex;
+        int workerPort = agent.getPort() + workerIndex;
 
         addNumaCtlSettings(args);
         addProfilerSettings(workerJvm, args);
@@ -213,7 +228,7 @@ public class WorkerJvmLauncher {
         args.add("-Dhazelcast.logging.type=log4j");
         args.add("-Dlog4j.configuration=file:" + log4jFile.getAbsolutePath());
 
-        args.add("-DSIMULATOR_HOME=" + SIMULATOR_HOME);
+        args.add("-DSIMULATOR_HOME=" + getSimulatorHome());
         args.add("-DworkerId=" + workerJvm.getId());
         args.add("-DworkerType=" + type);
         args.add("-DpublicAddress=" + agent.getPublicAddress());
@@ -243,7 +258,7 @@ public class WorkerJvmLauncher {
             case YOURKIT:
                 args.add(javaExecutable);
                 String agentSetting = workerJvmSettings.getProfilerSettings()
-                        .replace("${SIMULATOR_HOME}", SIMULATOR_HOME.getAbsolutePath())
+                        .replace("${SIMULATOR_HOME}", getSimulatorHome().getAbsolutePath())
                         .replace("${WORKER_HOME}", workerJvm.getWorkerHome().getAbsolutePath());
                 args.add(agentSetting);
                 break;
@@ -266,8 +281,8 @@ public class WorkerJvmLauncher {
     private String getClasspath() {
         String hzVersionDirectory = directoryForVersionSpec(workerJvmSettings.getHazelcastVersionSpec());
         return CLASSPATH
-                + CLASSPATH_SEPARATOR + SIMULATOR_HOME + "/hz-lib/" + hzVersionDirectory + "/*"
-                + CLASSPATH_SEPARATOR + SIMULATOR_HOME + "/user-lib/*"
+                + CLASSPATH_SEPARATOR + getSimulatorHome() + "/hz-lib/" + hzVersionDirectory + "/*"
+                + CLASSPATH_SEPARATOR + getSimulatorHome() + "/user-lib/*"
                 + CLASSPATH_SEPARATOR + new File(agent.getTestSuiteDir(), "lib/*").getAbsolutePath();
     }
 

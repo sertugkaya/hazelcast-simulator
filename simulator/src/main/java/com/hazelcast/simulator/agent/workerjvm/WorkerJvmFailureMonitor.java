@@ -41,7 +41,7 @@ import static java.lang.String.format;
 
 public class WorkerJvmFailureMonitor {
 
-    private static final int LAST_SEEN_TIMEOUT_SECONDS = 60;
+    private static final int LAST_SEEN_TIMEOUT_SECONDS = 30;
 
     private static final Logger LOGGER = Logger.getLogger(WorkerJvmFailureMonitor.class);
 
@@ -59,12 +59,18 @@ public class WorkerJvmFailureMonitor {
         monitorThread.interrupt();
     }
 
+    public void stopTimeoutDetection() {
+        LOGGER.info("Stopping timeout detection for Workers...");
+        monitorThread.detectTimeouts = false;
+    }
+
     private class MonitorThread extends Thread {
 
         private final Agent agent;
         private final WorkerJvmManager workerJvmManager;
 
         private volatile boolean running = true;
+        private volatile boolean detectTimeouts = true;
 
         public MonitorThread(Agent agent, WorkerJvmManager workerJvmManager) {
             super("WorkerJvmFailureMonitorThread");
@@ -155,6 +161,10 @@ public class WorkerJvmFailureMonitor {
         }
 
         private void detectInactivity(WorkerJvm workerJvm) {
+            if (!detectTimeouts) {
+                return;
+            }
+
             long elapsed = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - workerJvm.getLastSeen());
             if (elapsed > LAST_SEEN_TIMEOUT_SECONDS) {
                 sendFailureOperation(format("Worker has not sent a message for %d seconds", elapsed), WORKER_TIMEOUT, workerJvm);
@@ -190,10 +200,10 @@ public class WorkerJvmFailureMonitor {
             SimulatorAddress workerAddress = jvm.getAddress();
             FailureOperation operation = new FailureOperation(message, type, workerAddress, agent.getPublicAddress(),
                     jvm.getHazelcastAddress(), jvm.getId(), testId, agent.getTestSuite(), cause);
-            LOGGER.error(format("Detected failure on worker %s: %s", jvm.getId(), operation.getLogMessage(++failureCount)));
+            LOGGER.error(format("Detected failure on Worker %s: %s", jvm.getId(), operation.getLogMessage(++failureCount)));
 
             if (type.isWorkerFinishedFailure()) {
-                LOGGER.info(format("Removing failed worker %s from configuration...", workerAddress));
+                LOGGER.info(format("Removing failed Worker %s from configuration...", workerAddress));
                 agent.getAgentConnector().removeWorker(workerAddress.getWorkerIndex());
             }
 

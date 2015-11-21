@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.concurrent.lock;
 
 import com.hazelcast.core.HazelcastInstance;
@@ -37,17 +52,15 @@ public class TryLockTimeOutTest {
     private long totalInitialValue;
     private TestContext testContext;
     private HazelcastInstance hazelcastInstance;
-    private String id;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         hazelcastInstance = testContext.getTargetInstance();
-        id = testContext.getTestId();
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
+    public void warmup() {
         IList<Long> accounts = hazelcastInstance.getList(basename);
         for (int i = 0; i < maxAccounts; i++) {
             accounts.add(initialAccountValue);
@@ -61,7 +74,7 @@ public class TryLockTimeOutTest {
 
         for (int i = 0; i < maxAccounts; i++) {
             ILock lock = hazelcastInstance.getLock(basename + i);
-            assertFalse(id + " Lock should be unlocked", lock.isLocked());
+            assertFalse(basename + ": Lock should be unlocked", lock.isLocked());
         }
 
         long totalValue = 0;
@@ -70,7 +83,7 @@ public class TryLockTimeOutTest {
             totalValue += value;
         }
         LOGGER.info(": totalValue=" + totalValue);
-        assertEquals(id + " totalInitialValue != totalValue ", totalInitialValue, totalValue);
+        assertEquals(basename + ": totalInitialValue != totalValue ", totalInitialValue, totalValue);
 
         Counter total = new Counter();
         IList<Counter> totals = hazelcastInstance.getList(basename + "count");
@@ -82,7 +95,7 @@ public class TryLockTimeOutTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new Worker());
         }

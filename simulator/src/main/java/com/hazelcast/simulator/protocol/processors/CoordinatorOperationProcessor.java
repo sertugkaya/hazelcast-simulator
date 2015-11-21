@@ -1,8 +1,24 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.protocol.processors;
 
 import com.hazelcast.simulator.coordinator.FailureContainer;
 import com.hazelcast.simulator.coordinator.PerformanceStateContainer;
 import com.hazelcast.simulator.coordinator.TestHistogramContainer;
+import com.hazelcast.simulator.coordinator.TestPhaseListenerContainer;
 import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.exception.LocalExceptionLogger;
@@ -10,27 +26,37 @@ import com.hazelcast.simulator.protocol.operation.ExceptionOperation;
 import com.hazelcast.simulator.protocol.operation.FailureOperation;
 import com.hazelcast.simulator.protocol.operation.OperationType;
 import com.hazelcast.simulator.protocol.operation.PerformanceStateOperation;
+import com.hazelcast.simulator.protocol.operation.PhaseCompletedOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import com.hazelcast.simulator.protocol.operation.TestHistogramOperation;
+import org.apache.log4j.Logger;
 
+import static com.hazelcast.simulator.protocol.core.AddressLevel.TEST;
+import static com.hazelcast.simulator.protocol.core.ResponseType.EXCEPTION_DURING_OPERATION_EXECUTION;
 import static com.hazelcast.simulator.protocol.core.ResponseType.SUCCESS;
 import static com.hazelcast.simulator.protocol.core.ResponseType.UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR;
+import static java.lang.String.format;
 
 /**
  * An {@link OperationProcessor} implementation to process {@link SimulatorOperation} instances on a Simulator Coordinator.
  */
 public class CoordinatorOperationProcessor extends OperationProcessor {
 
+    private static final Logger LOGGER = Logger.getLogger(CoordinatorOperationProcessor.class);
+
     private final LocalExceptionLogger exceptionLogger;
+    private final TestPhaseListenerContainer testPhaseListenerContainer;
     private final PerformanceStateContainer performanceStateContainer;
     private final TestHistogramContainer testHistogramContainer;
     private final FailureContainer failureContainer;
 
     public CoordinatorOperationProcessor(LocalExceptionLogger exceptionLogger,
+                                         TestPhaseListenerContainer testPhaseListenerContainer,
                                          PerformanceStateContainer performanceStateContainer,
                                          TestHistogramContainer testHistogramContainer, FailureContainer failureContainer) {
         super(exceptionLogger);
         this.exceptionLogger = exceptionLogger;
+        this.testPhaseListenerContainer = testPhaseListenerContainer;
         this.performanceStateContainer = performanceStateContainer;
         this.testHistogramContainer = testHistogramContainer;
         this.failureContainer = failureContainer;
@@ -43,6 +69,8 @@ public class CoordinatorOperationProcessor extends OperationProcessor {
             case EXCEPTION:
                 processException((ExceptionOperation) operation);
                 break;
+            case PHASE_COMPLETED:
+                return processPhaseCompletion((PhaseCompletedOperation) operation, sourceAddress);
             case PERFORMANCE_STATE:
                 processPerformanceState((PerformanceStateOperation) operation, sourceAddress);
                 break;
@@ -60,6 +88,16 @@ public class CoordinatorOperationProcessor extends OperationProcessor {
 
     private void processException(ExceptionOperation operation) {
         exceptionLogger.logOperation(operation);
+    }
+
+    private ResponseType processPhaseCompletion(PhaseCompletedOperation operation, SimulatorAddress sourceAddress) {
+        if (!TEST.equals(sourceAddress.getAddressLevel())) {
+            LOGGER.error(format("Retrieved PhaseCompletedOperation %s from %s", operation.getTestPhase(), sourceAddress));
+            return EXCEPTION_DURING_OPERATION_EXECUTION;
+        }
+        int testIndex = sourceAddress.getTestIndex();
+        testPhaseListenerContainer.updatePhaseCompletion(testIndex, operation.getTestPhase());
+        return SUCCESS;
     }
 
     private void processPerformanceState(PerformanceStateOperation operation, SimulatorAddress sourceAddress) {

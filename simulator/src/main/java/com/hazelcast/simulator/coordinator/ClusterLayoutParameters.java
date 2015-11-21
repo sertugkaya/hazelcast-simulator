@@ -15,38 +15,47 @@
  */
 package com.hazelcast.simulator.coordinator;
 
+import com.hazelcast.simulator.cluster.WorkerConfigurationConverter;
+
 /**
  * Parameters for the layout of a Simulator cluster.
  */
-class ClusterLayoutParameters {
+public class ClusterLayoutParameters {
 
-    private final int dedicatedMemberMachineCount;
+    private final String clusterConfiguration;
+    private final WorkerConfigurationConverter workerConfigurationConverter;
+
+    private final int memberWorkerCount;
     private final int clientWorkerCount;
+    private final int dedicatedMemberMachineCount;
 
-    private int memberWorkerCount;
-
-    public ClusterLayoutParameters(int dedicatedMemberMachineCount, int clientWorkerCount, int memberWorkerCount) {
-        this.dedicatedMemberMachineCount = dedicatedMemberMachineCount;
+    public ClusterLayoutParameters(String clusterConfiguration, WorkerConfigurationConverter workerConfigurationConverter,
+                                   int memberWorkerCount, int clientWorkerCount, int dedicatedMemberMachineCount,
+                                   int agentCount) {
+        this.clusterConfiguration = clusterConfiguration;
+        this.workerConfigurationConverter = workerConfigurationConverter;
+        this.memberWorkerCount = (memberWorkerCount == -1) ? agentCount : memberWorkerCount;
         this.clientWorkerCount = clientWorkerCount;
-
-        this.memberWorkerCount = memberWorkerCount;
+        this.dedicatedMemberMachineCount = dedicatedMemberMachineCount;
     }
 
-    public void initMemberWorkerCount(int agentCount) {
-        if (memberWorkerCount == -1) {
-            memberWorkerCount = agentCount;
-        }
+    public String getClusterConfiguration() {
+        return clusterConfiguration;
     }
 
-    public int getDedicatedMemberMachineCount() {
-        return dedicatedMemberMachineCount;
+    public WorkerConfigurationConverter getWorkerConfigurationConverter() {
+        return workerConfigurationConverter;
+    }
+
+    public int getMemberWorkerCount() {
+        return memberWorkerCount;
     }
 
     public int getClientWorkerCount() {
         return clientWorkerCount;
     }
 
-    public int getMemberWorkerCount() {
-        return memberWorkerCount;
+    public int getDedicatedMemberMachineCount() {
+        return dedicatedMemberMachineCount;
     }
 }

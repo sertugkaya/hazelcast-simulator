@@ -1,13 +1,24 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.icache;
 
 import com.hazelcast.cache.ICache;
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
-import com.hazelcast.logging.ILogger;
-import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
@@ -18,7 +29,6 @@ import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractWorker;
 
-import javax.cache.CacheException;
 import javax.cache.CacheManager;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,8 +51,6 @@ public class BatchingICacheTest {
         GET,
     }
 
-    private static final ILogger LOGGER = Logger.getLogger(PerformanceICacheTest.class);
-
     // properties
     public int keyCount = 1000000;
     public String basename = BatchingICacheTest.class.getSimpleName();
@@ -54,31 +62,22 @@ public class BatchingICacheTest {
     private ICache<Object, Object> cache;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
+
         CacheManager cacheManager = createCacheManager(hazelcastInstance);
-
-        CacheConfig<Integer, Integer> config = new CacheConfig<Integer, Integer>();
-        config.setName(basename);
-
-        try {
-            cacheManager.createCache(basename, config);
-        } catch (CacheException hack) {
-            // temp hack to deal with multiple nodes wanting to make the same cache
-            LOGGER.severe(hack);
-        }
         cache = (ICache<Object, Object>) cacheManager.getCache(basename);
 
         operationSelectorBuilder.addOperation(Operation.PUT, writeProb).addDefaultOperation(Operation.GET);
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         cache.close();
     }
 
     @Warmup(global = true)
-    public void warmup() throws Exception {
+    public void warmup() {
         Streamer<Object, Object> streamer = StreamerFactory.getInstance(cache);
         for (int i = 0; i < keyCount; i++) {
             streamer.pushEntry(i, 0);
@@ -102,7 +101,7 @@ public class BatchingICacheTest {
         }
 
         @Override
-        public void timeStep(Operation operation) {
+        public void timeStep(Operation operation) throws Exception {
             Integer key = randomInt(keyCount);
             ICompletableFuture<?> future;
             switch (operation) {
@@ -121,16 +120,10 @@ public class BatchingICacheTest {
             syncIfNecessary(iteration++);
         }
 
-        private void syncIfNecessary(long iteration) {
+        private void syncIfNecessary(long iteration) throws Exception {
             if (iteration % batchSize == 0) {
                 for (ICompletableFuture<?> future : futureList) {
-                    try {
-                        future.get();
-                    } catch (RuntimeException e) {
-                        throw e;
-                    } catch (Exception e) {
-                        throw new TestException(e);
-                    }
+                    future.get();
                 }
                 futureList.clear();
             }

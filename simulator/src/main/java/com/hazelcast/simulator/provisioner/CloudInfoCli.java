@@ -1,11 +1,30 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.provisioner;
 
-import com.hazelcast.simulator.utils.CliUtils;
+import com.hazelcast.simulator.common.SimulatorProperties;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import org.jclouds.compute.ComputeService;
 
 import java.io.File;
+
+import static com.hazelcast.simulator.utils.CliUtils.initOptionsWithHelp;
+import static com.hazelcast.simulator.utils.CliUtils.printHelpAndExit;
 
 final class CloudInfoCli {
 
@@ -33,42 +52,44 @@ final class CloudInfoCli {
                     + "'$SIMULATOR_HOME/conf/simulator.properties'.")
             .withRequiredArg().ofType(String.class);
 
-    private final CloudInfo cloudInfo;
-    private final OptionSet options;
-
-    CloudInfoCli(CloudInfo cloudInfo, String[] args) {
-        this.cloudInfo = cloudInfo;
-        this.options = CliUtils.initOptionsWithHelp(parser, args);
+    private CloudInfoCli() {
     }
 
-    void run() {
+    static CloudInfo init(String[] args) {
+        CloudInfoCli cli = new CloudInfoCli();
+        OptionSet options = initOptionsWithHelp(cli.parser, args);
+
+        SimulatorProperties simulatorProperties = new SimulatorProperties();
+        simulatorProperties.init(getPropertiesFile(cli, options));
+
+        ComputeService computeService = new ComputeServiceBuilder(simulatorProperties).build();
+
+        return new CloudInfo(options.valueOf(cli.locationSpec), options.has(cli.verboseSpec), computeService);
+    }
+
+    static void run(String[] args, CloudInfo cloudInfo) {
+        CloudInfoCli cli = new CloudInfoCli();
+        OptionSet options = initOptionsWithHelp(cli.parser, args);
+
         try {
-            cloudInfo.props.init(getPropertiesFile());
-
-            cloudInfo.locationId = options.valueOf(locationSpec);
-            cloudInfo.verbose = options.has(verboseSpec);
-
-            if (options.has(showLocationsSpec)) {
-                cloudInfo.init();
+            if (options.has(cli.showLocationsSpec)) {
                 cloudInfo.showLocations();
-            } else if (options.has(showHardwareSpec)) {
-                cloudInfo.init();
+            } else if (options.has(cli.showHardwareSpec)) {
                 cloudInfo.showHardware();
-            } else if (options.has(showImagesSpec)) {
-                cloudInfo.init();
+            } else if (options.has(cli.showImagesSpec)) {
                 cloudInfo.showImages();
             } else {
-                CliUtils.printHelpAndExit(parser);
+                printHelpAndExit(cli.parser);
             }
         } finally {
             cloudInfo.shutdown();
         }
     }
 
-    private File getPropertiesFile() {
-        if (options.has(propertiesFileSpec)) {
+    private static File getPropertiesFile(CloudInfoCli cli, OptionSet options) {
+        if (options.has(cli.propertiesFileSpec)) {
             // a file was explicitly configured
-            return new File(options.valueOf(propertiesFileSpec));
+            return new File(options.valueOf(cli.propertiesFileSpec));
         } else {
             return null;
         }

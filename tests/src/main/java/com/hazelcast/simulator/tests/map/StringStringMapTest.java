@@ -73,9 +73,9 @@ public class StringStringMapTest {
     private String[] values;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         this.testContext = testContext;
-        map = testContext.getTargetInstance().getMap(basename + '-' + testContext.getTestId());
+        map = testContext.getTargetInstance().getMap(basename);
 
         operationSelectorBuilder.addOperation(Operation.PUT, putProb)
                 .addOperation(Operation.SET, setProb)
@@ -83,13 +83,13 @@ public class StringStringMapTest {
     }
 
     @Teardown
-    public void tearDown() throws Exception {
+    public void tearDown() {
         map.destroy();
         LOGGER.info(getOperationCountInformation(testContext.getTargetInstance()));
     }
 
     @Warmup(global = false)
-    public void warmup() throws InterruptedException {
+    public void warmup() {
         waitClusterSize(LOGGER, testContext.getTargetInstance(), minNumberOfMembers);
         keys = generateStringKeys(keyCount, keyLength, keyLocality, testContext.getTargetInstance());
         values = generateStrings(valueCount, valueLength);
@@ -97,7 +97,7 @@ public class StringStringMapTest {
         loadInitialData();
     }
 
-    private void loadInitialData() throws InterruptedException {
+    private void loadInitialData() {
         Random random = new Random();
         Streamer<String, String> streamer = StreamerFactory.getInstance(map);
         for (String key : keys) {

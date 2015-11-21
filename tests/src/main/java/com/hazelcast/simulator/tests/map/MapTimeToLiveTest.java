@@ -74,7 +74,7 @@ public class MapTimeToLiveTest {
     private IList<MapOperationCounter> results;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance targetInstance = testContext.getTargetInstance();
         map = targetInstance.getMap(basename);
         results = targetInstance.getList(basename + "report");
@@ -87,7 +87,7 @@ public class MapTimeToLiveTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         MapOperationCounter total = new MapOperationCounter();
         for (MapOperationCounter counter : results) {
             total.add(counter);
@@ -162,6 +162,6 @@ public class MapTimeToLiveTest {
     }
 
     public static void main(String[] args) throws Exception {
-        new TestRunner<MapAsyncOpsTest>(new MapAsyncOpsTest()).run();
+        new TestRunner<MapTimeToLiveTest>(new MapTimeToLiveTest()).run();
     }
 }

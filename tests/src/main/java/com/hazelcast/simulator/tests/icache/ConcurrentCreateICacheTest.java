@@ -47,17 +47,16 @@ public class ConcurrentCreateICacheTest {
     private IList<Counter> counterList;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
         counterList = hazelcastInstance.getList(baseName);
-
-        CacheManager cacheManager = createCacheManager(hazelcastInstance);
 
         CacheConfig config = new CacheConfig();
         config.setName(baseName);
 
         Counter counter = new Counter();
         try {
+            CacheManager cacheManager = createCacheManager(hazelcastInstance);
             cacheManager.createCache(baseName, config);
             counter.create++;
         } catch (CacheException e) {
@@ -68,7 +67,7 @@ public class ConcurrentCreateICacheTest {
     }
 
     @Verify(global = true)
-    public void verify() throws Exception {
+    public void verify() {
         Counter total = new Counter();
         for (Counter counter : counterList) {
             total.add(counter);

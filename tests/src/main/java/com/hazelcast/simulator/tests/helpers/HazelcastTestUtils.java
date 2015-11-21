@@ -43,9 +43,9 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static com.hazelcast.simulator.utils.ReflectionUtils.getFieldValue;
 import static com.hazelcast.simulator.utils.VersionUtils.isMinVersion;
@@ -57,6 +57,14 @@ public final class HazelcastTestUtils {
     private static final ILogger LOGGER = Logger.getLogger(HazelcastTestUtils.class);
 
     private HazelcastTestUtils() {
+    }
+
+    public static RuntimeException rethrow(Throwable throwable) {
+        if (throwable instanceof RuntimeException) {
+            throw (RuntimeException) throwable;
+        } else {
+            throw new TestException(throwable);
+        }
     }
 
     public static String getPartitionDistributionInformation(HazelcastInstance hz) {
@@ -125,10 +133,8 @@ public final class HazelcastTestUtils {
                     value = 0L;
                 }
                 result.put(member, value);
-            } catch (InterruptedException e) {
-                throw new TestException(e);
-            } catch (ExecutionException e) {
-                throw new TestException(e);
+            } catch (Exception e) {
+                throw rethrow(e);
             }
         }
 
@@ -179,14 +185,14 @@ public final class HazelcastTestUtils {
         }
     }
 
-    public static void waitClusterSize(ILogger logger, HazelcastInstance hz, int clusterSize) throws InterruptedException {
+    public static void waitClusterSize(ILogger logger, HazelcastInstance hz, int clusterSize) {
         for (; ; ) {
             if (hz.getCluster().getMembers().size() >= clusterSize) {
                 return;
             }
 
             logger.info("waiting cluster == " + clusterSize);
-            Thread.sleep(1000);
+            sleepSeconds(1);
         }
     }
 

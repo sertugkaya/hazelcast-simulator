@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.protocol.operation;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,7 +27,7 @@ public enum OperationType {
 
     INTEGRATION_TEST(IntegrationTestOperation.class, 0),
 
-    TERMINATE_WORKERS(TerminateWorkersOperation.class, 1),
+    TERMINATE_WORKER(TerminateWorkerOperation.class, 1),
 
     CREATE_WORKER(CreateWorkerOperation.class, 2),
     CREATE_TEST(CreateTestOperation.class, 3),
@@ -22,14 +37,16 @@ public enum OperationType {
 
     INIT_TEST_SUITE(InitTestSuiteOperation.class, 6),
 
-    IS_PHASE_COMPLETED(IsPhaseCompletedOperation.class, 7),
+    PHASE_COMPLETED(PhaseCompletedOperation.class, 7),
     START_TEST_PHASE(StartTestPhaseOperation.class, 8),
     START_TEST(StartTestOperation.class, 9),
     STOP_TEST(StopTestOperation.class, 10),
 
     PERFORMANCE_STATE(PerformanceStateOperation.class, 11),
     TEST_HISTOGRAMS(TestHistogramOperation.class, 12),
-    FAILURE(FailureOperation.class, 13);
+    FAILURE(FailureOperation.class, 13),
+
+    STOP_TIMEOUT_DETECTION(StopTimeoutDetectionOperation.class, 14);
 
     private final Class<? extends SimulatorOperation> classType;
     private final int classId;

@@ -23,7 +23,6 @@ import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
@@ -37,13 +36,13 @@ import com.hazelcast.simulator.worker.tasks.AbstractAsyncWorker;
 
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getOperationCountInformation;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isClient;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isMemberNode;
-import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKey;
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
+import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
 import static com.hazelcast.simulator.worker.metronome.SimpleMetronome.withFixedIntervalMs;
@@ -75,15 +74,16 @@ public class AsyncAtomicLongTest {
     private HazelcastInstance targetInstance;
 
     @Setup
-    public void setup(TestContext context) throws Exception {
-        targetInstance = context.getTargetInstance();
+    public void setup(TestContext testContext) {
+        targetInstance = testContext.getTargetInstance();
 
-        totalCounter = targetInstance.getAtomicLong("TotalCounter:" + context.getTestId());
+        totalCounter = targetInstance.getAtomicLong(basename + ":TotalCounter");
         if (isMemberNode(targetInstance)) {
             counters = new AsyncAtomicLong[countersLength];
-            for (int i = 0; i < counters.length; i++) {
-                String key = basename + generateStringKey(8, keyLocality, targetInstance);
-                counters[i] = (AsyncAtomicLong) targetInstance.getAtomicLong(key);
+
+            String[] names = generateStringKeys(basename, countersLength, keyLocality, testContext.getTargetInstance());
+            for (int i = 0; i < countersLength; i++) {
+                counters[i] = (AsyncAtomicLong) targetInstance.getAtomicLong(names[i]);
             }
         }
 
@@ -92,7 +92,7 @@ public class AsyncAtomicLongTest {
     }
 
     @Teardown
-    public void teardown() throws Exception {
+    public void teardown() {
         if (isMemberNode(targetInstance)) {
             for (IAtomicLong counter : counters) {
                 counter.destroy();
@@ -176,10 +176,8 @@ public class AsyncAtomicLongTest {
                     for (ICompletableFuture batchFuture : batch) {
                         try {
                             batchFuture.get();
-                        } catch (InterruptedException e) {
-                            throw new TestException(e);
-                        } catch (ExecutionException e) {
-                            throw new TestException(e);
+                        } catch (Exception e) {
+                            throw rethrow(e);
                         }
                     }
                     batch.clear();

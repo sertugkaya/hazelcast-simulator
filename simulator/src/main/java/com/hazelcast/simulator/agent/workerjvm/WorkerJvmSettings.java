@@ -19,6 +19,8 @@ import com.hazelcast.simulator.common.JavaProfiler;
 import com.hazelcast.simulator.coordinator.WorkerParameters;
 import com.hazelcast.simulator.worker.WorkerType;
 
+import static com.hazelcast.simulator.worker.WorkerType.MEMBER;
+
 /**
  * Settings for a (single) Simulator Worker JVM.
  */
@@ -41,19 +43,19 @@ public class WorkerJvmSettings {
     private final String numaCtl;
 
     public WorkerJvmSettings(int workerIndex, WorkerType workerType, WorkerParameters workerParameters) {
+        this(workerIndex, workerType, workerParameters, workerParameters.getHazelcastVersionSpec(),
+                (workerType == MEMBER) ? workerParameters.getMemberJvmOptions() : workerParameters.getClientJvmOptions(),
+                (workerType == MEMBER) ? workerParameters.getMemberHzConfig() : workerParameters.getClientHzConfig());
+    }
+
+    public WorkerJvmSettings(int workerIndex, WorkerType workerType, WorkerParameters workerParameters,
+                             String hazelcastVersionSpec, String jvmOptions, String hazelcastConfig) {
         this.workerIndex = workerIndex;
         this.workerType = workerType.name();
-        this.hazelcastVersionSpec = workerParameters.getHazelcastVersionSpec();
+        this.hazelcastVersionSpec = hazelcastVersionSpec;
 
-        switch (workerType) {
-            case MEMBER:
-                this.jvmOptions = workerParameters.getMemberJvmOptions();
-                this.hazelcastConfig = workerParameters.getMemberHzConfig();
-                break;
-            default:
-                this.jvmOptions = workerParameters.getClientJvmOptions();
-                this.hazelcastConfig = workerParameters.getClientHzConfig();
-        }
+        this.jvmOptions = jvmOptions;
+        this.hazelcastConfig = hazelcastConfig;
         this.log4jConfig = workerParameters.getLog4jConfig();
 
         this.autoCreateHzInstance = workerParameters.isAutoCreateHzInstance();

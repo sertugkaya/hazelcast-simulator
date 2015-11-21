@@ -1,6 +1,20 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.icache;
 
-import com.hazelcast.config.CacheConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
@@ -59,7 +73,7 @@ public class MangleICacheTest {
     private IList<ICacheOperationCounter> results;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         hazelcastInstance = testContext.getTargetInstance();
         results = hazelcastInstance.getList(basename);
 
@@ -73,7 +87,7 @@ public class MangleICacheTest {
     }
 
     @Verify(global = true)
-    public void verify() throws Exception {
+    public void verify() {
         ICacheOperationCounter total = new ICacheOperationCounter();
         for (ICacheOperationCounter counter : results) {
             total.add(counter);
@@ -88,7 +102,6 @@ public class MangleICacheTest {
 
     private class Worker extends AbstractWorker<Operation> {
 
-        private final CacheConfig config = new CacheConfig();
         private final ICacheOperationCounter counter = new ICacheOperationCounter();
 
         private CacheManager cacheManager;
@@ -96,7 +109,6 @@ public class MangleICacheTest {
         public Worker() {
             super(operationSelectorBuilder);
 
-            config.setName(basename);
             createNewCacheManager();
         }
 
@@ -113,7 +125,7 @@ public class MangleICacheTest {
                     closeCacheManager();
                     break;
                 case CREATE_CACHE:
-                    createCache();
+                    getCache();
                     break;
                 case CLOSE_CACHE:
                     closeCache();
@@ -159,10 +171,10 @@ public class MangleICacheTest {
             }
         }
 
-        private void createCache() {
+        private void getCache() {
             try {
                 int cacheNumber = randomInt(maxCaches);
-                cacheManager.createCache(basename + cacheNumber, config);
+                cacheManager.getCache(basename + cacheNumber);
                 counter.create++;
             } catch (CacheException e) {
                 counter.createException++;

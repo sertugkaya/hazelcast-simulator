@@ -42,12 +42,12 @@ public class PerformanceStateContainerTest {
         SimulatorAddress worker2 = new SimulatorAddress(AddressLevel.WORKER, 2, 1, 0);
 
         Map<String, PerformanceState> performanceStates1 = new HashMap<String, PerformanceState>();
-        performanceStates1.put(TEST_CASE_ID_1, new PerformanceState(1000, 200, 500, 1800, 2500));
-        performanceStates1.put(TEST_CASE_ID_2, new PerformanceState(1500, 900, 800, 2000, 2700));
+        performanceStates1.put(TEST_CASE_ID_1, new PerformanceState(1000, 200, 500, 1900.0d, 1800, 2500));
+        performanceStates1.put(TEST_CASE_ID_2, new PerformanceState(1500, 900, 800, 2300.0d, 2000, 2700));
 
         Map<String, PerformanceState> performanceStates2 = new HashMap<String, PerformanceState>();
-        performanceStates2.put(TEST_CASE_ID_1, new PerformanceState(800, 100, 300, 2400, 2800));
-        performanceStates2.put(TEST_CASE_ID_2, new PerformanceState(1200, 700, 600, 2600, 2900));
+        performanceStates2.put(TEST_CASE_ID_1, new PerformanceState(800, 100, 300, 2200.0d, 2400, 2800));
+        performanceStates2.put(TEST_CASE_ID_2, new PerformanceState(1200, 700, 600, 2700.0d, 2600, 2900));
 
         performanceStateContainer.updatePerformanceState(worker1, performanceStates1);
         performanceStateContainer.updatePerformanceState(worker2, performanceStates2);
@@ -70,13 +70,13 @@ public class PerformanceStateContainerTest {
     @Test
     public void testGetPerformanceNumbers_testCaseNotFound() {
         String performance = performanceStateContainer.getPerformanceNumbers("notFound");
-        assertTrue(performance.contains("not available"));
+        assertFalse(performance.contains("ops"));
     }
 
     @Test
     public void testGetPerformanceNumbers_onEmptyContainer() {
         String performance = emptyPerformanceStateContainer.getPerformanceNumbers(TEST_CASE_ID_1);
-        assertTrue(performance.contains("not available"));
+        assertFalse(performance.contains("ops"));
     }
 
     @Test
@@ -87,6 +87,7 @@ public class PerformanceStateContainerTest {
         assertEquals(300, performanceState.getIntervalThroughput(), ASSERT_EQUALS_DELTA);
         assertEquals(800, performanceState.getTotalThroughput(), ASSERT_EQUALS_DELTA);
         assertEquals(2400, performanceState.getIntervalPercentileLatency());
+        assertEquals(2200.0d, performanceState.getIntervalAvgLatency(), 0.001);
         assertEquals(2800, performanceState.getIntervalMaxLatency());
     }
 

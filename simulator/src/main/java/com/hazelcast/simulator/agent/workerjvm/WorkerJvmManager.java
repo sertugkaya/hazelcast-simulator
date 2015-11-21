@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.hazelcast.simulator.agent.workerjvm;
 
 import com.hazelcast.simulator.protocol.core.AddressLevel;
@@ -89,7 +88,7 @@ public class WorkerJvmManager {
             workerJvm.getProcess().destroy();
             workerJvm.getProcess().waitFor();
         } catch (Exception e) {
-            LOGGER.error("Failed to destroy worker process: " + workerJvm, e);
+            LOGGER.error("Failed to destroy Worker process: " + workerJvm, e);
         }
     }
 }

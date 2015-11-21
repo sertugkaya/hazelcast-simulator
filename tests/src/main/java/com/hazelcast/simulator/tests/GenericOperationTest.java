@@ -1,8 +1,22 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.Member;
-import com.hazelcast.instance.Node;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
@@ -15,23 +29,20 @@ import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.Warmup;
-import com.hazelcast.simulator.utils.ReflectionUtils;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractWorker;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.InternalCompletableFuture;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.UrgentSystemOperation;
-import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.locks.LockSupport;
 
-import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getNode;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getOperationCountInformation;
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getOperationService;
 
 public class GenericOperationTest {
 
@@ -59,12 +70,9 @@ public class GenericOperationTest {
     private HazelcastInstance instance;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         instance = testContext.getTargetInstance();
-
-        Node node = getNode(instance);
-        Method method = ReflectionUtils.getMethodByName(NodeEngineImpl.class, "getOperationService");
-        operationService = (OperationService) method.invoke(node.nodeEngine);
+        operationService = getOperationService(instance);
 
         operationSelectorBuilder
                 .addOperation(PrioritySelector.PRIORITY, priorityProb)
@@ -83,7 +91,7 @@ public class GenericOperationTest {
     }
 
     @Teardown
-    public void tearDown() throws Exception {
+    public void tearDown() {
         LOGGER.info(getOperationCountInformation(instance));
     }
 

@@ -94,7 +94,7 @@ public class MapEntryListenerTest {
     private IMap<Integer, String> map;
 
     @Setup
-    public void setUp(TestContext testContext) throws Exception {
+    public void setUp(TestContext testContext) {
         HazelcastInstance targetInstance = testContext.getTargetInstance();
 
         values = generateStrings(valueCount, valueLength);
@@ -119,7 +119,7 @@ public class MapEntryListenerTest {
     }
 
     @Teardown(global = true)
-    public void tearDown() throws Exception {
+    public void tearDown() {
         map.destroy();
     }
 
@@ -136,7 +136,7 @@ public class MapEntryListenerTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         for (int i = 0; i < listeners.size() - 1; i++) {
             EntryListenerImpl a = listeners.get(i);
             EntryListenerImpl b = listeners.get(i + 1);
@@ -145,7 +145,7 @@ public class MapEntryListenerTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         EventCount total = new EventCount();
         for (EventCount eventCount : eventCounts) {
             total.add(eventCount);

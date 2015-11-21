@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.worker.performance;
 
 import com.hazelcast.simulator.probes.Probe;
@@ -118,13 +133,16 @@ public class WorkerPerformanceMonitor {
 
         private void updatePerformanceStates(long currentTimestamp) {
             for (TestContainer testContainer : testContainers) {
+                String testId = testContainer.getTestContext().getTestId();
                 if (!testContainer.isRunning()) {
                     continue;
                 }
+
                 Map<String, Probe> probeMap = testContainer.getProbeMap();
                 Map<String, Histogram> intervalHistograms = new HashMap<String, Histogram>(probeMap.size());
 
                 long intervalPercentileLatency = Long.MIN_VALUE;
+                double intervalAvgLatency = Long.MIN_VALUE;
                 long intervalMaxLatency = Long.MIN_VALUE;
                 long intervalOperationalCount = 0;
 
@@ -137,6 +155,10 @@ public class WorkerPerformanceMonitor {
                     if (percentileValue > intervalPercentileLatency) {
                         intervalPercentileLatency = percentileValue;
                     }
+                    double avgValue = intervalHistogram.getMean();
+                    if (avgValue > intervalAvgLatency) {
+                        intervalAvgLatency = avgValue;
+                    }
                     long maxValue = intervalHistogram.getMaxValue();
                     if (maxValue > intervalMaxLatency) {
                         intervalMaxLatency = maxValue;
@@ -146,10 +168,8 @@ public class WorkerPerformanceMonitor {
                     }
                 }
 
-                String testId = testContainer.getTestContext().getTestId();
                 PerformanceTracker tracker = getOrCreatePerformanceTracker(testId, testContainer);
-
-                tracker.update(intervalHistograms, intervalPercentileLatency, intervalMaxLatency,
+                tracker.update(intervalHistograms, intervalPercentileLatency, intervalAvgLatency, intervalMaxLatency,
                         intervalOperationalCount, currentTimestamp);
             }
         }
@@ -167,9 +187,11 @@ public class WorkerPerformanceMonitor {
         private void sendPerformanceStates() {
             PerformanceStateOperation operation = new PerformanceStateOperation();
             for (Map.Entry<String, PerformanceTracker> trackerEntry : trackerMap.entrySet()) {
-                String testId = trackerEntry.getKey();
                 PerformanceTracker stats = trackerEntry.getValue();
-                operation.addPerformanceState(testId, stats.createPerformanceState());
+                if (stats.isUpdated()) {
+                    String testId = trackerEntry.getKey();
+                    operation.addPerformanceState(testId, stats.createPerformanceState());
+                }
             }
             serverConnector.submit(SimulatorAddress.COORDINATOR, operation);
         }
@@ -186,11 +208,13 @@ public class WorkerPerformanceMonitor {
 
             // test performance stats
             for (PerformanceTracker stats : trackerMap.values()) {
-                stats.writeStatsToFile(dateString);
+                if (stats.getAndResetIsUpdated()) {
+                    stats.writeStatsToFile(dateString);
 
-                globalIntervalOperationCount += stats.getIntervalOperationCount();
-                globalOperationsCount += stats.getTotalOperationCount();
-                globalIntervalThroughput += stats.getIntervalThroughput();
+                    globalIntervalOperationCount += stats.getIntervalOperationCount();
+                    globalOperationsCount += stats.getTotalOperationCount();
+                    globalIntervalThroughput += stats.getIntervalThroughput();
+                }
             }
 
             // global performance stats

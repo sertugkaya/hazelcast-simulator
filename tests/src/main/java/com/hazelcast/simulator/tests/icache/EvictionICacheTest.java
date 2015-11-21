@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.hazelcast.simulator.tests.icache;
 
 import com.hazelcast.cache.ICache;
@@ -52,7 +67,6 @@ public class EvictionICacheTest {
     public double putAsyncProb = 0.1;
     public double putAllProb = 0.1;
 
-    private String id;
     private TestContext testContext;
     private HazelcastInstance hazelcastInstance;
     private byte[] value;
@@ -66,22 +80,20 @@ public class EvictionICacheTest {
     private OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         this.testContext = testContext;
         hazelcastInstance = this.testContext.getTargetInstance();
         partitionCount = hazelcastInstance.getPartitionService().getPartitions().size();
 
-        id = testContext.getTestId();
         value = new byte[valueSize];
         Random random = new Random();
         random.nextBytes(value);
 
         CacheManager cacheManager = createCacheManager(hazelcastInstance);
-
         cache = (ICache<Object, Object>) cacheManager.getCache(basename);
 
         CacheConfig config = cache.getConfiguration(CacheConfig.class);
-        LOGGER.info(id + ": " + cache.getName() + " config=" + config);
+        LOGGER.info(basename + ": " + cache.getName() + " config=" + config);
 
         configuredMaxSize = config.getEvictionConfig().getSize();
 
@@ -103,7 +115,7 @@ public class EvictionICacheTest {
 
     @Run
     public void run() {
-        ThreadSpawner spawner = new ThreadSpawner(testContext.getTestId());
+        ThreadSpawner spawner = new ThreadSpawner(basename);
         for (int i = 0; i < threadCount; i++) {
             spawner.spawn(new WorkerThread());
         }
@@ -149,8 +161,8 @@ public class EvictionICacheTest {
                 }
 
                 if (size > estimatedMaxSize) {
-                    fail(id + ": cache " + cache.getName() + " size=" + cache.size() + " configuredMaxSize=" + configuredMaxSize
-                            + " estimatedMaxSize=" + estimatedMaxSize);
+                    fail(basename + ": cache " + cache.getName() + " size=" + cache.size()
+                            + " configuredMaxSize=" + configuredMaxSize + " estimatedMaxSize=" + estimatedMaxSize);
                 }
             }
             hazelcastInstance.getList(basename + "max").add(max);
@@ -160,7 +172,7 @@ public class EvictionICacheTest {
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         IList<Integer> results = hazelcastInstance.getList(basename + "max");
         int observedMaxSize = 0;
         for (int m : results) {
@@ -168,7 +180,7 @@ public class EvictionICacheTest {
                 observedMaxSize = m;
             }
         }
-        LOGGER.info(id + ": cache " + cache.getName() + " size=" + cache.size() + " configuredMaxSize=" + configuredMaxSize
+        LOGGER.info(basename + ": cache " + cache.getName() + " size=" + cache.size() + " configuredMaxSize=" + configuredMaxSize
                 + " observedMaxSize=" + observedMaxSize + " estimatedMaxSize=" + estimatedMaxSize);
 
         IList<Counter> counters = hazelcastInstance.getList(basename + "counter");
@@ -176,8 +188,8 @@ public class EvictionICacheTest {
         for (Counter c : counters) {
             total.add(c);
         }
-        LOGGER.info(id + ": " + total);
-        LOGGER.info(id + ": putAllMap size=" + putAllMap.size());
+        LOGGER.info(basename + ": " + total);
+        LOGGER.info(basename + ": putAllMap size=" + putAllMap.size());
     }
 
     public static class Counter implements Serializable {

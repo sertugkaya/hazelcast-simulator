@@ -20,7 +20,6 @@ import com.hazelcast.core.IList;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
-import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
@@ -66,11 +65,9 @@ public class CacheLoaderTest {
     private Cache<Integer, Integer> cache;
 
     @Setup
-    public void setup(TestContext testContext) throws Exception {
+    public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
         loaderList = hazelcastInstance.getList(basename + "loaders");
-
-        CacheManager cacheManager = createCacheManager(hazelcastInstance);
 
         config = new MutableConfiguration<Integer, Integer>();
         config.setReadThrough(true);
@@ -79,6 +76,7 @@ public class CacheLoaderTest {
         recordingCacheLoader.loadAllDelayMs = loadAllDelayMs;
         config.setCacheLoaderFactory(FactoryBuilder.factoryOf(recordingCacheLoader));
 
+        CacheManager cacheManager = createCacheManager(hazelcastInstance);
         cacheManager.createCache(basename, config);
         cache = cacheManager.getCache(basename);
     }
@@ -91,13 +89,13 @@ public class CacheLoaderTest {
     }
 
     @Verify(global = false)
-    public void verify() throws Exception {
+    public void verify() {
         RecordingCacheLoader<Integer> loader = (RecordingCacheLoader<Integer>) config.getCacheLoaderFactory().create();
         LOGGER.info(basename + ": " + loader);
     }
 
     @Verify(global = true)
-    public void globalVerify() throws Exception {
+    public void globalVerify() {
         for (int i = 0; i < keyCount; i++) {
             assertTrue(basename + ": cache should contain key " + i, cache.containsKey(i));
         }
@@ -125,16 +123,12 @@ public class CacheLoaderTest {
     private class Worker extends AbstractMonotonicWorker {
 
         @Override
-        public void timeStep() {
+        public void timeStep() throws Exception {
             CompletionListenerFuture loaded = new CompletionListenerFuture();
             cache.loadAll(keySet, true, loaded);
 
             if (waitForLoadAllFutureCompletion) {
-                try {
-                    loaded.get();
-                } catch (Exception e) {
-                    throw new TestException(e);
-                }
+                loaded.get();
             }
         }
 
