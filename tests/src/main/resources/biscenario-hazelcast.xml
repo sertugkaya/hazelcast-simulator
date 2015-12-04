@@ -1,0 +1,62 @@
+<hazelcast xsi:schemaLocation="http://www.hazelcast.com/schema/config
+                               http://www.hazelcast.com/schema/config/hazelcast-config-3.5.xsd"
+           xmlns="http://www.hazelcast.com/schema/config"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+    <!--license-key-->
+
+    <group>
+        <name>worker</name>
+    </group>
+
+    <network>
+        <port port-count="200" auto-increment="true">5701</port>
+        <join>
+            <multicast enabled="false"/>
+            <tcp-ip enabled="true">
+                <!--MEMBERS-->
+            </tcp-ip>
+        </join>
+    </network>
+
+    <partition-group enabled="true" group-type="HOST_AWARE">
+    </partition-group>
+
+    <!--MANAGEMENT_CENTER_CONFIG-->
+
+    <serialization>
+        <portable-version>1</portable-version>
+
+        <data-serializable-factories>
+            <data-serializable-factory factory-id="2000">
+                com.hazelcast.simulator.tests.synthetic.SyntheticSerializableFactory
+            </data-serializable-factory>
+            <data-serializable-factory factory-id="3000">
+                com.hazelcast.simulator.tests.syntheticmap.SyntheticMapSerializableFactory
+            </data-serializable-factory>
+            <data-serializable-factory
+                    factory-id="1">com.hazelcast.simulator.tests.BIST.MixedObjectSerializableFactory
+            </data-serializable-factory>
+            <data-serializable-factory
+                    factory-id="2">com.hazelcast.simulator.tests.BIST.SomeObjectSerializableFactory
+            </data-serializable-factory>
+            <data-serializable-factory
+                    factory-id="3">com.hazelcast.simulator.tests.BIST.TradableEntryProcessorFactory
+            </data-serializable-factory>
+        </data-serializable-factories>
+
+
+        <portable-factories>
+            <portable-factory factory-id="10000000">
+                com.hazelcast.simulator.tests.synthetic.SyntheticRequestPortableFactory
+            </portable-factory>
+        </portable-factories>
+    </serialization>
+
+    <services>
+        <service enabled="true">
+            <name>hz:impl:syntheticMapService</name>
+            <class-name>com.hazelcast.simulator.tests.syntheticmap.SyntheticMapService</class-name>
+        </service>
+    </services>
+</hazelcast>
