@@ -139,10 +139,17 @@ public class FailureContainer {
     public void logFailureInfo() {
         int failureCount = failureOperations.size();
         if (failureCount > 0) {
-            LOGGER.fatal(HORIZONTAL_RULER);
-            LOGGER.fatal(failureCount + " failures have been detected!!!");
-            LOGGER.fatal(HORIZONTAL_RULER);
-            throw new CommandLineExitException(failureCount + " failures have been detected");
+            if (hasCriticalFailure.get()) {
+                LOGGER.fatal(HORIZONTAL_RULER);
+                LOGGER.fatal(failureCount + " failures have been detected!!!");
+                LOGGER.fatal(HORIZONTAL_RULER);
+                throw new CommandLineExitException(failureCount + " failures have been detected");
+            } else {
+                LOGGER.fatal(HORIZONTAL_RULER);
+                LOGGER.fatal(failureCount + " non-critical failures have been detected!");
+                LOGGER.fatal(HORIZONTAL_RULER);
+            }
+            return;
         }
         LOGGER.info(HORIZONTAL_RULER);
         LOGGER.info("No failures have been detected!");

@@ -29,8 +29,6 @@ import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 import com.hazelcast.simulator.worker.tasks.IWorker;
 
-import static java.lang.Math.abs;
-
 /**
  * Test to exercising PagingPredicate.
  * It's intended to be used for benchmarking purposes, it doesn't validate correctness of results.
@@ -81,7 +79,7 @@ public class PagingPredicateTest {
 
     @RunWithWorker
     public IWorker createWorker() {
-        return sequentialWorker ? new SequentialWorker() : new RandomWorker();
+        return sequentialWorker ? new SequentialWorker() : new ArbitraryWorker();
     }
 
     private class SequentialWorker extends BaseWorker {
@@ -94,7 +92,11 @@ public class PagingPredicateTest {
         }
     }
 
-    private class RandomWorker extends BaseWorker {
+    private class ArbitraryWorker extends BaseWorker {
+
+        ArbitraryWorker() {
+            predicate = createNewPredicate();
+        }
 
         @Override
         protected void timeStep() throws Exception {
@@ -103,15 +105,13 @@ public class PagingPredicateTest {
             evaluatePredicate();
         }
 
+        private PagingPredicate createNewPredicate() {
+            return new PagingPredicate(pageSize);
+        }
+
         private void goToRandomPage() {
-            int newPage = abs(randomInt(maxPage));
-            while (predicate.getPage() != newPage) {
-                if (predicate.getPage() > newPage) {
-                    predicate.previousPage();
-                } else {
-                    predicate.nextPage();
-                }
-            }
+            int pageNumber = randomInt(maxPage);
+            predicate.setPage(pageNumber);
         }
     }
 

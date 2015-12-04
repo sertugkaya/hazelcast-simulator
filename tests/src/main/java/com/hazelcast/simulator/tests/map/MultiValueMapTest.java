@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.hazelcast.simulator.tests.map.multivalues;
+package com.hazelcast.simulator.tests.map;
 
 import com.hazelcast.core.IMap;
 import com.hazelcast.logging.ILogger;
@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import static java.lang.Math.abs;
+import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 
 public class MultiValueMapTest {
@@ -75,7 +76,7 @@ public class MultiValueMapTest {
     @Warmup(global = true)
     public void warmup() {
         if (useIndex) {
-            map.addIndex("payloadField[*]", true);
+            map.addIndex("payloadField[any]", true);
         }
         loadInitialData();
     }
@@ -116,7 +117,7 @@ public class MultiValueMapTest {
                     map.put(key, sillySequence);
                     break;
                 case QUERY:
-                    Predicate predicate = Predicates.equal("payloadField[*]", key);
+                    Predicate predicate = Predicates.equal("payloadField[any]", key);
                     queryProbe.started();
                     Collection<SillySequence> result = null;
                     try {
@@ -124,7 +125,7 @@ public class MultiValueMapTest {
                     } finally {
                         queryProbe.done();
                     }
-                    THROTTLING_LOGGER.info("Query 'payloadField[*]= " + key + "' returned " + result.size() + " results.");
+                    THROTTLING_LOGGER.info(format("Query 'payloadField[any]= %d' returned %d results.", key, result.size()));
                     for (SillySequence resultSillySequence : result) {
                         assertValidSequence(resultSillySequence);
                     }
@@ -135,8 +136,8 @@ public class MultiValueMapTest {
         }
 
         private void assertValidSequence(SillySequence sillySequence) {
-            Collection<Integer> payload = sillySequence.getPayload();
-            assertEquals(sillySequence.getCount(), payload.size());
+            Collection<Integer> payload = sillySequence.payloadField;
+            assertEquals(sillySequence.count, payload.size());
 
             Integer lastValue = null;
             for (int i : payload) {
@@ -166,14 +167,6 @@ public class MultiValueMapTest {
             for (int i = from; i < to; i++) {
                 payloadField.add(i);
             }
-        }
-
-        public int getCount() {
-            return count;
-        }
-
-        public Collection<Integer> getPayload() {
-            return payloadField;
         }
 
         @Override

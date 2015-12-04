@@ -104,6 +104,10 @@ public class SimulatorProperties {
         }
     }
 
+    public String getSshOptions() {
+        return get("SSH_OPTIONS", "");
+    }
+
     public String getUser() {
         return get("USER", "simulator");
     }
@@ -126,6 +130,18 @@ public class SimulatorProperties {
 
     public int getHazelcastPortRangeSize() {
         return parseInt(get("HAZELCAST_PORT_RANGE_SIZE", "50"));
+    }
+
+    public String getCloudProvider() {
+        return get("CLOUD_PROVIDER");
+    }
+
+    public String getCloudIdentity() {
+        return get("CLOUD_IDENTITY");
+    }
+
+    public String getCloudCredential() {
+        return get("CLOUD_CREDENTIAL");
     }
 
     public String get(String name) {
