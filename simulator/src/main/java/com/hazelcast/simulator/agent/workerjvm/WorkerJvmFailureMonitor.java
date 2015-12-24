@@ -16,6 +16,7 @@
 package com.hazelcast.simulator.agent.workerjvm;
 
 import com.hazelcast.simulator.agent.Agent;
+import com.hazelcast.simulator.protocol.connector.AgentConnector;
 import com.hazelcast.simulator.protocol.core.Response;
 import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
@@ -33,7 +34,7 @@ import static com.hazelcast.simulator.test.FailureType.WORKER_EXIT;
 import static com.hazelcast.simulator.test.FailureType.WORKER_FINISHED;
 import static com.hazelcast.simulator.test.FailureType.WORKER_OOM;
 import static com.hazelcast.simulator.test.FailureType.WORKER_TIMEOUT;
-import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
+import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
@@ -42,6 +43,7 @@ import static java.lang.String.format;
 public class WorkerJvmFailureMonitor {
 
     private static final int LAST_SEEN_TIMEOUT_SECONDS = 30;
+    private static final int DEFAULT_CHECK_INTERVAL_MILLIS = (int) TimeUnit.SECONDS.toMillis(1);
 
     private static final Logger LOGGER = Logger.getLogger(WorkerJvmFailureMonitor.class);
 
@@ -50,13 +52,23 @@ public class WorkerJvmFailureMonitor {
     private int failureCount;
 
     public WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager) {
-        monitorThread = new MonitorThread(agent, workerJvmManager);
+        this(agent, workerJvmManager, DEFAULT_CHECK_INTERVAL_MILLIS);
+    }
+
+    public WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager, int checkIntervalMillis) {
+        monitorThread = new MonitorThread(agent, workerJvmManager, checkIntervalMillis);
         monitorThread.start();
     }
 
     public void shutdown() {
         monitorThread.running = false;
         monitorThread.interrupt();
+    }
+
+    public void startTimeoutDetection() {
+        LOGGER.info("Starting timeout detection for Workers...");
+        monitorThread.updateLastSeen();
+        monitorThread.detectTimeouts = true;
     }
 
     public void stopTimeoutDetection() {
@@ -68,16 +80,18 @@ public class WorkerJvmFailureMonitor {
 
         private final Agent agent;
         private final WorkerJvmManager workerJvmManager;
+        private final int checkIntervalMillis;
 
         private volatile boolean running = true;
-        private volatile boolean detectTimeouts = true;
+        private volatile boolean detectTimeouts;
 
-        public MonitorThread(Agent agent, WorkerJvmManager workerJvmManager) {
+        public MonitorThread(Agent agent, WorkerJvmManager workerJvmManager, int checkIntervalMillis) {
             super("WorkerJvmFailureMonitorThread");
             setDaemon(true);
 
             this.agent = agent;
             this.workerJvmManager = workerJvmManager;
+            this.checkIntervalMillis = checkIntervalMillis;
         }
 
         public void run() {
@@ -89,7 +103,13 @@ public class WorkerJvmFailureMonitor {
                 } catch (Exception e) {
                     LOGGER.fatal("Failed to scan for failures", e);
                 }
-                sleepSeconds(1);
+                sleepMillis(checkIntervalMillis);
+            }
+        }
+
+        private void updateLastSeen() {
+            for (WorkerJvm workerJvm : workerJvmManager.getWorkerJVMs()) {
+                workerJvm.updateLastSeen();
             }
         }
 
@@ -112,11 +132,7 @@ public class WorkerJvmFailureMonitor {
                 return;
             }
 
-            File[] exceptionFiles = workerHome.listFiles(new ExceptionExtensionFilter());
-            if (exceptionFiles == null) {
-                return;
-            }
-
+            File[] exceptionFiles = ExceptionExtensionFilter.listFiles(workerHome);
             for (File exceptionFile : exceptionFiles) {
                 String content = fileAsText(exceptionFile);
 
@@ -136,7 +152,7 @@ public class WorkerJvmFailureMonitor {
         }
 
         private void detectOomeFailure(WorkerJvm workerJvm) {
-            if (!isOomeFound(workerJvm)) {
+            if (!isOomeFound(workerJvm.getWorkerHome())) {
                 return;
             }
             workerJvm.setOomeDetected();
@@ -144,8 +160,8 @@ public class WorkerJvmFailureMonitor {
             sendFailureOperation("Worker ran into an OOME", WORKER_OOM, workerJvm);
         }
 
-        private boolean isOomeFound(WorkerJvm workerJvm) {
-            File oomeFile = new File(workerJvm.getWorkerHome(), "worker.oome");
+        private boolean isOomeFound(File workerHome) {
+            File oomeFile = new File(workerHome, "worker.oome");
             if (oomeFile.exists()) {
                 return true;
             }
@@ -153,15 +169,12 @@ public class WorkerJvmFailureMonitor {
             // if we find the hprof file, we also know there is an OOME. The problem with the worker.oome file is that it is
             // created after the heap dump is done, and creating the heap dump can take a lot of time. And then the system could
             // think there is another problem (e.g. lack of inactivity; or timeouts). This hides the OOME.
-            String[] hprofFiles = workerJvm.getWorkerHome().list(new HProfExtensionFilter());
-            if (hprofFiles == null) {
-                return false;
-            }
+            File[] hprofFiles = HProfExtensionFilter.listFiles(workerHome);
             return (hprofFiles.length > 0);
         }
 
         private void detectInactivity(WorkerJvm workerJvm) {
-            if (!detectTimeouts || !workerJvm.detectTimeout()) {
+            if (!detectTimeouts) {
                 return;
             }
 
@@ -205,40 +218,63 @@ public class WorkerJvmFailureMonitor {
                 LOGGER.error(format("Detected failure on Worker %s: %s", jvm.getId(), operation.getLogMessage(++failureCount)));
             }
 
+            AgentConnector agentConnector = agent.getAgentConnector();
             if (type.isWorkerFinishedFailure()) {
                 String finishedType = (isFailure) ? "failed" : "finished";
                 LOGGER.info(format("Removing %s Worker %s from configuration...", finishedType, workerAddress));
-                agent.getAgentConnector().removeWorker(workerAddress.getWorkerIndex());
+                agentConnector.removeWorker(workerAddress.getWorkerIndex());
             }
 
             try {
-                Response response = agent.getAgentConnector().write(SimulatorAddress.COORDINATOR, operation);
+                Response response = agentConnector.write(SimulatorAddress.COORDINATOR, operation);
                 if (response.getFirstErrorResponseType() != ResponseType.SUCCESS) {
-                    LOGGER.fatal(format("Could not send failure to coordinator! %s", operation));
+                    LOGGER.error(format("Could not send failure to coordinator! %s", operation));
                 } else {
                     LOGGER.info("Failure successfully sent to Coordinator!");
                 }
             } catch (SimulatorProtocolException e) {
                 if (!isInterrupted()) {
-                    LOGGER.fatal(format("Could not send failure to coordinator! %s", operation), e);
+                    LOGGER.error(format("Could not send failure to coordinator! %s", operation), e);
                 }
             }
         }
     }
 
-    private static class HProfExtensionFilter implements FilenameFilter {
+    static class ExceptionExtensionFilter implements FilenameFilter {
 
-        @Override
-        public boolean accept(File dir, String name) {
-            return name.endsWith(".hprof");
+        private static final ExceptionExtensionFilter INSTANCE = new ExceptionExtensionFilter();
+        private static final File[] EMPTY_FILES = new File[0];
+
+        static File[] listFiles(File workerHome) {
+            File[] exceptionFiles = workerHome.listFiles(ExceptionExtensionFilter.INSTANCE);
+            if (exceptionFiles == null) {
+                return EMPTY_FILES;
+            }
+            return exceptionFiles;
         }
-    }
-
-    private static class ExceptionExtensionFilter implements FilenameFilter {
 
         @Override
         public boolean accept(File dir, String name) {
             return name.endsWith(".exception");
+        }
+    }
+
+    static class HProfExtensionFilter implements FilenameFilter {
+
+        private static final HProfExtensionFilter INSTANCE = new HProfExtensionFilter();
+        private static final File[] EMPTY_FILES = new File[0];
+
+        static File[] listFiles(File workerHome) {
+            File[] hprofFiles = workerHome.listFiles(HProfExtensionFilter.INSTANCE);
+            if (hprofFiles == null) {
+                return EMPTY_FILES;
+            }
+            return hprofFiles;
+        }
+
+        @Override
+        public boolean accept(File dir, String name) {
+            return name.endsWith(".hprof");
         }
     }
 }
