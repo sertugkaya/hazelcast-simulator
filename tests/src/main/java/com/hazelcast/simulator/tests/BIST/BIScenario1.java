@@ -69,7 +69,7 @@ public class BIScenario1 {
 
     @Warmup
     public void warmup() {
-        keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, testContext.getTargetInstance());
+        keys = generateIntKeys(keyCount, keyLocality, testContext.getTargetInstance());
         Streamer<Integer, SomeObject> streamer = StreamerFactory.getInstance(tradableMap);
         for (int key : keys) {
             SomeObject value = new SomeObject();
