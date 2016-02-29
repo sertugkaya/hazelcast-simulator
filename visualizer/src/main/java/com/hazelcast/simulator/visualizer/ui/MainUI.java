@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,11 @@ import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.io.File;
 
+@SuppressWarnings("checkstyle:classdataabstractioncoupling")
 public final class MainUI extends JFrame {
+
+    private static final int WIDTH = 600;
+    private static final int HEIGHT = 400;
 
     private final Model model = new Model();
 
@@ -43,7 +47,7 @@ public final class MainUI extends JFrame {
 
     private void createUI() {
         setTitle("Simulator Workbench");
-        setSize(600, 400);
+        setSize(WIDTH, HEIGHT);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setLocationByPlatform(true);
         setVisible(true);
@@ -106,7 +110,7 @@ public final class MainUI extends JFrame {
 
         JMenuItem exitMenuItem = new JMenuItem("Exit");
         exitMenuItem.addActionListener(new ActionListener() {
-            @SuppressFBWarnings({"DM_EXIT"})
+            @SuppressFBWarnings("DM_EXIT")
             @Override
             public void actionPerformed(ActionEvent e) {
                 System.exit(0);

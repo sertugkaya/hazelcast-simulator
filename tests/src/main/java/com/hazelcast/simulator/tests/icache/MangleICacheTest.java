@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,6 +59,7 @@ public class MangleICacheTest {
     public String basename = MangleICacheTest.class.getSimpleName();
     public int maxCaches = 100;
 
+    public int keyCount = 100000;
     public double createCacheManagerProb = 0.1;
     public double cacheManagerCloseProb = 0.1;
     public double cachingProviderCloseProb = 0.1;
@@ -215,7 +216,7 @@ public class MangleICacheTest {
             Cache<Integer, Integer> cache = getCacheIfExists(cacheNumber);
             try {
                 if (cache != null) {
-                    cache.put(randomInt(), randomInt());
+                    cache.put(randomInt(keyCount), randomInt());
                     counter.put++;
                 }
             } catch (CacheException e) {

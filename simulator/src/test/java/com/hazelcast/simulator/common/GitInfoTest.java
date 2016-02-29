@@ -40,19 +40,14 @@ public class GitInfoTest {
     public void testLoadProperties() {
         Properties properties = GitInfo.loadGitProperties(GitInfo.GIT_INFO_FILE);
         assertNotNull(properties);
-        assertFalse(properties instanceof GitInfo.DummyProperties);
-    }
-
-    @Test(expected = NullPointerException.class)
-    public void testLoadProperties_null() {
-        GitInfo.loadGitProperties(null);
+        assertFalse(properties instanceof GitInfo.UnknownGitProperties);
     }
 
     @Test
     public void testLoadProperties_notExists() {
         Properties properties = GitInfo.loadGitProperties("notExists");
         assertNotNull(properties);
-        assertTrue(properties instanceof GitInfo.DummyProperties);
+        assertTrue(properties instanceof GitInfo.UnknownGitProperties);
 
         assertEquals(GitInfo.UNKNOWN, properties.getProperty(GitInfo.GIT_COMMIT_ID_AABREV));
         assertEquals(GitInfo.UNKNOWN, properties.getProperty(GitInfo.GIT_COMMIT_ID));
@@ -61,5 +56,10 @@ public class GitInfoTest {
         assertEquals(GitInfo.UNKNOWN, properties.getProperty(GitInfo.GIT_REMOTE_ORIGIN_URL));
 
         assertEquals("default", properties.getProperty(GitInfo.GIT_COMMIT_ID_AABREV, "default"));
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testLoadProperties_null() {
+        GitInfo.loadGitProperties(null);
     }
 }

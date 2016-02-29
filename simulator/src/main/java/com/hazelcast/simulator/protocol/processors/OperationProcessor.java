@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,13 @@ package com.hazelcast.simulator.protocol.processors;
 import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.exception.ExceptionLogger;
+import com.hazelcast.simulator.protocol.operation.ChaosMonkeyOperation;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
 import com.hazelcast.simulator.protocol.operation.LogOperation;
 import com.hazelcast.simulator.protocol.operation.OperationType;
+import com.hazelcast.simulator.protocol.operation.OperationTypeCounter;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
+import com.hazelcast.simulator.utils.ChaosMonkeyUtils;
 import org.apache.log4j.Logger;
 
 import static com.hazelcast.simulator.protocol.core.ResponseType.EXCEPTION_DURING_OPERATION_EXECUTION;
@@ -42,22 +45,22 @@ public abstract class OperationProcessor {
         this.exceptionLogger = exceptionLogger;
     }
 
-    public void shutdown() {
-    }
-
     @SuppressWarnings("PMD.AvoidCatchingThrowable")
     public final ResponseType process(SimulatorOperation operation, SimulatorAddress sourceAddress) {
         OperationType operationType = getOperationType(operation);
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace(getClass().getSimpleName() + ".process(" + operation.getClass().getSimpleName() + ')');
         }
+        OperationTypeCounter.received(operationType);
         try {
             switch (operationType) {
                 case INTEGRATION_TEST:
-                    processIntegrationTest((IntegrationTestOperation) operation);
-                    break;
+                    return processIntegrationTest(operationType, (IntegrationTestOperation) operation, sourceAddress);
                 case LOG:
                     processLog((LogOperation) operation, sourceAddress);
+                    break;
+                case CHAOS_MONKEY:
+                    processChaosMonkey((ChaosMonkeyOperation) operation);
                     break;
                 default:
                     return processOperation(operationType, operation, sourceAddress);
@@ -69,14 +72,26 @@ public abstract class OperationProcessor {
         return SUCCESS;
     }
 
-    private void processIntegrationTest(IntegrationTestOperation operation) {
-        if (!IntegrationTestOperation.TEST_DATA.equals(operation.getTestData())) {
-            throw new IllegalStateException("operationData has not the expected value");
+    private ResponseType processIntegrationTest(OperationType operationType, IntegrationTestOperation operation,
+                                                SimulatorAddress sourceAddress) throws Exception {
+        switch (operation.getType()) {
+            case EQUALS:
+                if (!IntegrationTestOperation.TEST_DATA.equals(operation.getTestData())) {
+                    throw new IllegalStateException("operationData has not the expected value");
+                }
+                break;
+            default:
+                return processOperation(operationType, operation, sourceAddress);
         }
+        return SUCCESS;
     }
 
     private void processLog(LogOperation operation, SimulatorAddress sourceAddress) {
         LOGGER.log(operation.getLevel(), format("[%s] %s", sourceAddress, operation.getMessage()));
+    }
+
+    private void processChaosMonkey(ChaosMonkeyOperation operation) {
+        ChaosMonkeyUtils.execute(operation.getType());
     }
 
     protected abstract ResponseType processOperation(OperationType operationType, SimulatorOperation operation,

@@ -3,6 +3,7 @@ package com.hazelcast.simulator.provisioner;
 import com.hazelcast.simulator.common.SimulatorProperties;
 import com.hazelcast.simulator.utils.Bash;
 import com.hazelcast.simulator.utils.CommandLineExitException;
+import com.hazelcast.simulator.utils.jars.HazelcastJARs;
 import org.jclouds.compute.domain.NodeMetadata;
 import org.jclouds.compute.domain.Template;
 import org.junit.After;
@@ -43,7 +44,9 @@ public class ProvisionerTest extends AbstractComputeServiceTest {
         SimulatorProperties properties = new SimulatorProperties();
         initComputeServiceMock();
         bash = mock(Bash.class);
-        provisioner = new Provisioner(properties, computeService, bash, 0);
+        HazelcastJARs hazelcastJars = mock(HazelcastJARs.class);
+
+        provisioner = new Provisioner(properties, computeService, bash, hazelcastJars, false, 0);
     }
 
     @After
@@ -97,11 +100,6 @@ public class ProvisionerTest extends AbstractComputeServiceTest {
         verify(bash, atLeastOnce()).ssh(eq("127.0.0.1"), anyString());
         verify(bash, atLeastOnce()).sshQuiet(eq("127.0.0.1"), anyString());
         verify(bash, atLeastOnce()).uploadToRemoteSimulatorDir(eq("127.0.0.1"), anyString(), anyString());
-    }
-
-    @Test
-    public void testListMachines() {
-        provisioner.listMachines();
     }
 
     @Test

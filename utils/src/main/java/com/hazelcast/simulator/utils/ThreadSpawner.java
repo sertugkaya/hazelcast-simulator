@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,7 +90,7 @@ public class ThreadSpawner {
      * @return the created thread
      */
     public Thread spawn(Runnable runnable) {
-        return spawn("Thread", runnable);
+        return spawn(identifier + "-Thread", runnable);
     }
 
     /**
@@ -161,7 +161,7 @@ public class ThreadSpawner {
 
     private static class ThrowExceptionThread extends Thread {
 
-        public ThrowExceptionThread(String name, Runnable task) {
+        ThrowExceptionThread(String name, Runnable task) {
             super(task, name);
             setDaemon(true);
         }
@@ -171,13 +171,14 @@ public class ThreadSpawner {
 
         private final String testId;
 
-        public ReportExceptionThread(String testId, String name, Runnable task) {
+        ReportExceptionThread(String testId, String name, Runnable task) {
             super(task, name);
             this.testId = testId;
             setDaemon(true);
         }
 
         @Override
+        @SuppressWarnings("PMD.AvoidCatchingThrowable")
         public void run() {
             try {
                 super.run();

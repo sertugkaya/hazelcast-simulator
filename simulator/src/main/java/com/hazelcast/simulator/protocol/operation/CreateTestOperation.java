@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,23 @@ import com.hazelcast.simulator.test.TestCase;
 import java.util.Map;
 
 /**
- * Creates a new Simulator test with the defined properties.
+ * Creates a Simulator Test based on an index, a testId and a property map.
  */
 public class CreateTestOperation implements SimulatorOperation {
 
+    /**
+     * Test index for the {@link com.hazelcast.simulator.protocol.core.SimulatorAddress}.
+     */
     private final int testIndex;
+
+    /**
+     * Test id for for {@link TestCase}.
+     */
     private final String testId;
+
+    /**
+     * Test parameters which are injected to public variables of the same name.
+     */
     private final Map<String, String> properties;
 
     public CreateTestOperation(int testIndex, TestCase testCase) {

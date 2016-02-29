@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import com.hazelcast.simulator.test.annotations.Verify;
 import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.utils.AssertTask;
 import com.hazelcast.simulator.worker.metronome.Metronome;
+import com.hazelcast.simulator.worker.metronome.MetronomeType;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractAsyncWorker;
 
@@ -45,7 +46,7 @@ import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
 import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
-import static com.hazelcast.simulator.worker.metronome.SimpleMetronome.withFixedIntervalMs;
+import static com.hazelcast.simulator.worker.metronome.MetronomeFactory.withFixedIntervalMs;
 import static org.junit.Assert.assertEquals;
 
 public class AsyncAtomicLongTest {
@@ -59,8 +60,9 @@ public class AsyncAtomicLongTest {
 
     // properties
     public String basename = AsyncAtomicLongTest.class.getSimpleName();
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int countersLength = 1000;
+    public MetronomeType metronomeType = MetronomeType.SLEEPING;
     public int metronomeIntervalMs = (int) TimeUnit.SECONDS.toMillis(1);
     public int assertEventuallySeconds = 300;
     public int batchSize = -1;
@@ -139,7 +141,7 @@ public class AsyncAtomicLongTest {
     private class Worker extends AbstractAsyncWorker<Operation, Long> {
 
         private final List<ICompletableFuture> batch = new LinkedList<ICompletableFuture>();
-        private final Metronome metronome = withFixedIntervalMs(metronomeIntervalMs);
+        private final Metronome metronome = withFixedIntervalMs(metronomeIntervalMs, metronomeType);
 
         private long increments;
 
@@ -185,6 +187,14 @@ public class AsyncAtomicLongTest {
             }
 
             metronome.waitForNext();
+        }
+
+        @Override
+        protected void handleResponse(Long response) {
+        }
+
+        @Override
+        protected void handleFailure(Throwable t) {
         }
 
         @Override

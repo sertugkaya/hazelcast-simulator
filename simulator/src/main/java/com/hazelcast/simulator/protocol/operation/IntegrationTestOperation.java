@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,48 @@
 package com.hazelcast.simulator.protocol.operation;
 
 /**
- * Operation for integration tests of the Simulator Protocol.
+ * Executes tasks for integration tests of the Simulator Protocol.
  */
 public class IntegrationTestOperation implements SimulatorOperation {
 
+    public enum Type {
+        EQUALS,
+        NESTED_SYNC,
+        NESTED_ASYNC,
+        DEEP_NESTED_SYNC,
+        DEEP_NESTED_ASYNC
+    }
+
+    /**
+     * Test data which is used for the {@link Type#EQUALS} type.
+     */
     public static final String TEST_DATA = "IntegrationTestData";
 
+    /**
+     * Defines the {@link Type} of this operation.
+     */
+    private final String type;
+
+    /**
+     * Defines the payload of this operation.
+     */
     private final String testData;
 
-    public IntegrationTestOperation(String testData) {
+    public IntegrationTestOperation() {
+        this(Type.EQUALS, TEST_DATA);
+    }
+
+    public IntegrationTestOperation(Type type) {
+        this(type, null);
+    }
+
+    public IntegrationTestOperation(Type type, String testData) {
+        this.type = type.name();
         this.testData = testData;
+    }
+
+    public Type getType() {
+        return Type.valueOf(type);
     }
 
     public String getTestData() {

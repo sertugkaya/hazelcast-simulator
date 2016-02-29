@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,18 +22,17 @@ import com.hazelcast.map.AbstractEntryProcessor;
 import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
-import com.hazelcast.simulator.test.annotations.InjectProbe;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.Verify;
 import com.hazelcast.simulator.test.annotations.Warmup;
 import com.hazelcast.simulator.tests.helpers.KeyLocality;
-import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
+import com.hazelcast.simulator.tests.helpers.KeyUtils;
+import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorkerWithProbeControl;
 
 import java.util.Map;
 
-import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKey;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static org.junit.Assert.assertEquals;
 
@@ -44,14 +43,11 @@ public class MapEntryProcessorTest {
     public int keyCount = 1000;
     public int minProcessorDelayMs = 0;
     public int maxProcessorDelayMs = 0;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
 
-    @InjectProbe(useForThroughput = false)
-    public Probe probe;
-
-    private HazelcastInstance targetInstance;
     private IMap<Integer, Long> map;
     private IList<long[]> resultsPerWorker;
+    private int[] keys;
 
     @Setup
     public void setUp(TestContext testContext) {
@@ -61,9 +57,10 @@ public class MapEntryProcessorTest {
                     + " maxProcessorDelayMs = " + maxProcessorDelayMs);
         }
 
-        targetInstance = testContext.getTargetInstance();
+        HazelcastInstance targetInstance = testContext.getTargetInstance();
         map = targetInstance.getMap(basename);
         resultsPerWorker = targetInstance.getList(basename + ":ResultMap");
+        keys = KeyUtils.generateIntKeys(keyCount, keyLocality, targetInstance);
     }
 
     @Teardown
@@ -106,17 +103,20 @@ public class MapEntryProcessorTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractMonotonicWorker {
+    private class Worker extends AbstractMonotonicWorkerWithProbeControl {
         private final long[] localIncrementsAtKey = new long[keyCount];
 
         @Override
-        public void timeStep() {
-            int key = generateIntKey(keyCount, keyLocality, targetInstance);
+        public void timeStep(Probe probe) {
+            int key = keys[randomInt(keys.length)];
+
             long increment = randomInt(100);
             int delayMs = calculateDelay();
-            probe.started();
+
+            long started = System.nanoTime();
             map.executeOnKey(key, new IncrementEntryProcessor(increment, delayMs));
-            probe.done();
+            probe.recordValue(System.nanoTime() - started);
+
             localIncrementsAtKey[key] += increment;
         }
 

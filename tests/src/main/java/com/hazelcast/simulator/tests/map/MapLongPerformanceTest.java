@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import com.hazelcast.simulator.test.annotations.Warmup;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithProbeControl;
 
 public class MapLongPerformanceTest {
 
@@ -38,12 +38,8 @@ public class MapLongPerformanceTest {
 
     // properties
     public String basename = MapLongPerformanceTest.class.getSimpleName();
-    public int threadCount = 10;
     public int keyCount = 1000000;
     public double writeProb = 0.1;
-
-    // probes
-    public Probe probe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -78,31 +74,32 @@ public class MapLongPerformanceTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithProbeControl<Operation> {
 
         public Worker() {
             super(operationSelectorBuilder);
         }
 
         @Override
-        public void timeStep(Operation operation) {
+        public void timeStep(Operation operation, Probe probe) {
             Integer key = randomInt(keyCount);
 
+            long started;
             switch (operation) {
                 case PUT:
-                    probe.started();
+                    started = System.nanoTime();
                     try {
                         map.set(key, System.currentTimeMillis());
                     } finally {
-                        probe.done();
+                        probe.recordValue(System.nanoTime() - started);
                     }
                     break;
                 case GET:
-                    probe.started();
+                    started = System.nanoTime();
                     try {
                         map.get(key);
                     } finally {
-                        probe.done();
+                        probe.recordValue(System.nanoTime() - started);
                     }
                     break;
                 default:

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,14 @@ import com.hazelcast.simulator.agent.workerjvm.WorkerJvmSettings;
 
 import java.util.List;
 
+/**
+ * Creates one or more Simulator Workers, based on a list of {@link WorkerJvmSettings}.
+ */
 public class CreateWorkerOperation implements SimulatorOperation {
 
+    /**
+     * Defines a list of {@link WorkerJvmSettings} to create Simulator Workers.
+     */
     private final List<WorkerJvmSettings> settingsList;
 
     public CreateWorkerOperation(List<WorkerJvmSettings> settingsList) {

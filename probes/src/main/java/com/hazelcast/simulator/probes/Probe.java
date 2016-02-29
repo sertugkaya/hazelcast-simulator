@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,13 @@ public interface Probe {
      * Stops a latency measurement in the local thread and records the value.
      */
     void done();
+
+    /**
+     * Calculates the latency from an external start time and records the value.
+     *
+     * @param started external start time from {@link System#nanoTime()}.
+     */
+    void done(long started);
 
     /**
      * Adds a latency value in nanoseconds to the probe result.

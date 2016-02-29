@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@ public class MapTTLSaturationTest {
 
     // properties
     public String basename = MapTTLSaturationTest.class.getSimpleName();
-    public int threadCount = 3;
     public double maxHeapUsagePercentage = 80;
 
     private IMap<Long, Long> map;

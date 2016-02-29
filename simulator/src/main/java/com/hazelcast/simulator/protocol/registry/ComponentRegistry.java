@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static java.lang.Math.ceil;
+import static java.lang.String.format;
+import static java.util.Collections.emptyList;
 import static java.util.Collections.synchronizedList;
 import static java.util.Collections.unmodifiableList;
 
@@ -78,6 +81,7 @@ public class ComponentRegistry {
     public synchronized void addWorkers(SimulatorAddress parentAddress, List<WorkerJvmSettings> settingsList) {
         for (WorkerJvmSettings settings : settingsList) {
             WorkerData workerData = new WorkerData(parentAddress, settings);
+            agents.get(workerData.getAddress().getAgentIndex() - 1).addWorker(workerData);
             workers.add(workerData);
         }
     }
@@ -85,13 +89,14 @@ public class ComponentRegistry {
     public synchronized void removeWorker(SimulatorAddress workerAddress) {
         for (WorkerData workerData : workers) {
             if (workerData.getAddress().equals(workerAddress)) {
-                workers.remove(workerData);
+                removeWorker(workerData);
                 break;
             }
         }
     }
 
     public synchronized void removeWorker(WorkerData workerData) {
+        agents.get(workerData.getAddress().getAgentIndex() - 1).removeWorker(workerData);
         workers.remove(workerData);
     }
 
@@ -99,8 +104,67 @@ public class ComponentRegistry {
         return workers.size();
     }
 
+    public boolean hasClientWorkers() {
+        for (WorkerData workerData : workers) {
+            if (!workerData.isMemberWorker()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public List<WorkerData> getWorkers() {
         return unmodifiableList(workers);
+    }
+
+    public List<WorkerData> getWorkers(TargetType targetType, int targetCount) {
+        if (targetCount <= 0) {
+            return emptyList();
+        }
+
+        List<WorkerData> workerList = new ArrayList<WorkerData>();
+        getWorkers(targetType, targetCount, workerList, true);
+        return workerList;
+    }
+
+    public List<String> getWorkerAddresses(TargetType targetType, int targetCount) {
+        if (targetCount <= 0) {
+            return emptyList();
+        }
+
+        List<String> workerList = new ArrayList<String>();
+        getWorkers(targetType, targetCount, workerList, false);
+        return workerList;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void getWorkers(TargetType targetType, int targetCount, List workerList, boolean addWorkerData) {
+        if (targetCount > workers.size()) {
+            throw new IllegalArgumentException(format("Cannot return more Workers than registered (wanted: %d, registered: %d)",
+                    targetCount, workers.size()));
+        }
+
+        int workersPerAgent = (int) ceil(targetCount / (double) agents.size());
+        for (AgentData agentData : agents) {
+            int count = 0;
+            for (WorkerData workerData : agentData.getWorkers()) {
+                if (!targetType.matches(workerData.isMemberWorker())) {
+                    continue;
+                }
+                if (count++ < workersPerAgent && workerList.size() < targetCount) {
+                    if (addWorkerData) {
+                        workerList.add(workerData);
+                    } else {
+                        workerList.add(workerData.getAddress().toString());
+                    }
+                }
+            }
+        }
+
+        if (workerList.size() < targetCount) {
+            throw new IllegalStateException(format("Could not find enough Workers of type %s (wanted: %d, found: %d)",
+                    targetType, targetCount, workerList.size()));
+        }
     }
 
     public WorkerData getFirstWorker() {
@@ -132,6 +196,10 @@ public class ComponentRegistry {
 
     public void removeTests() {
         tests.clear();
+    }
+
+    public int testCount() {
+        return tests.size();
     }
 
     public Collection<TestData> getTests() {

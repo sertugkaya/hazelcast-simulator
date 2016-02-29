@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ import static java.lang.String.format;
 public class SimulatorProperties {
 
     public static final String PROPERTIES_FILE_NAME = "simulator.properties";
+
+    private static final int WORKER_TIMEOUT_FACTOR = 3;
 
     private static final Logger LOGGER = Logger.getLogger(SimulatorProperties.class);
 
@@ -120,12 +122,28 @@ public class SimulatorProperties {
         }
     }
 
-    public int getAgentPort() {
-        return parseInt(get("AGENT_PORT", "9000"));
+    public int getWorkerPingIntervalSeconds() {
+        return parseInt(get("WORKER_PING_INTERVAL_SECONDS", "60"));
+    }
+
+    public int getWorkerLastSeenTimeoutSeconds() {
+        return getWorkerPingIntervalSeconds() * WORKER_TIMEOUT_FACTOR;
+    }
+
+    public int getMemberWorkerShutdownDelaySeconds() {
+        return parseInt(get("MEMBER_WORKER_SHUTDOWN_DELAY_SECONDS", "5"));
+    }
+
+    public int getWaitForWorkerShutdownTimeoutSeconds() {
+        return parseInt(get("WAIT_FOR_WORKER_SHUTDOWN_TIMEOUT_SECONDS", "120"));
     }
 
     public int getAgentThreadPoolSize() {
         return parseInt(get("AGENT_THREAD_POOL_SIZE", "0"));
+    }
+
+    public int getAgentPort() {
+        return parseInt(get("AGENT_PORT", "9000"));
     }
 
     public int getHazelcastPort() {

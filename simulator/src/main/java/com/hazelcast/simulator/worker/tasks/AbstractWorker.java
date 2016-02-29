@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.annotations.InjectProbe;
+import com.hazelcast.simulator.test.annotations.InjectTestContext;
 import com.hazelcast.simulator.worker.selector.OperationSelector;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 
@@ -28,62 +29,59 @@ import java.util.Random;
 import static com.hazelcast.simulator.utils.CommonUtils.rethrow;
 
 /**
- * Abstract worker class which is returned by {@link com.hazelcast.simulator.test.annotations.RunWithWorker} annotated test
- * methods.
+ * Base implementation of {@link IWorker} which is returned by {@link com.hazelcast.simulator.test.annotations.RunWithWorker}
+ * annotated test methods.
  *
- * Implicitly logs and measures performance. The related properties can be overwritten with the properties of the test.
- * The Operation counter is automatically increased after each {@link #timeStep(Enum)} call.
+ * Implicitly measures throughput and latency with a built-in {@link Probe}.
+ * The operation counter is automatically increased after each call of {@link #timeStep(Enum)}.
  *
- * @param <O> Type of Enum used by the {@link com.hazelcast.simulator.worker.selector.OperationSelector}
+ * @param <O> Type of {@link Enum} used by the {@link com.hazelcast.simulator.worker.selector.OperationSelector}
  */
 public abstract class AbstractWorker<O extends Enum<O>> implements IWorker {
 
-    static final ILogger LOGGER = Logger.getLogger(AbstractWorker.class);
+    protected static final ILogger LOGGER = Logger.getLogger(AbstractWorker.class);
 
-    // these fields will be injected by test.properties of the test
-    @SuppressWarnings("checkstyle:visibilitymodifier")
-    public long logFrequency;
+    private final Random random = new Random();
+    private final OperationSelector<O> selector;
 
-    final Random random = new Random();
-    final OperationSelector<O> selector;
+    @InjectTestContext
+    private TestContext testContext;
+    @InjectProbe(name = IWorker.DEFAULT_WORKER_PROBE_NAME, useForThroughput = true)
+    private Probe workerProbe;
 
-    // these fields will be injected by the TestContainer
-    TestContext testContext;
-    @InjectProbe(useForThroughput = true)
-    Probe workerProbe;
-
-    // local variables
-    long iteration;
-    boolean isWorkerStopped;
+    private long iteration;
+    private boolean isWorkerStopped;
 
     public AbstractWorker(OperationSelectorBuilder<O> operationSelectorBuilder) {
         this.selector = operationSelectorBuilder.build();
     }
 
     /**
-     * This constructor is just for child classes who also override the {@link #run()} method.
+     * This constructor is for inherited classes which don't use the {@link OperationSelectorBuilder}.
      */
     AbstractWorker() {
         this.selector = null;
     }
 
     @Override
-    public void run() {
-        beforeRun();
-
-        while (!testContext.isStopped() && !isWorkerStopped) {
-            long started = System.nanoTime();
-            try {
-                timeStep(selector.select());
-            } catch (Exception e) {
-                throw rethrow(e);
+    public final void run() {
+        try {
+            beforeRun();
+            while ((!testContext.isStopped() && !isWorkerStopped)) {
+                doRun();
             }
-            workerProbe.recordValue(System.nanoTime() - started);
-
-            increaseIteration();
+            afterRun();
+        } catch (Exception e) {
+            throw rethrow(e);
         }
+    }
 
-        afterRun();
+    protected void doRun() throws Exception {
+        long started = System.nanoTime();
+        timeStep(selector.select());
+        workerProbe.recordValue(System.nanoTime() - started);
+
+        increaseIteration();
     }
 
     /**
@@ -107,7 +105,7 @@ public abstract class AbstractWorker<O extends Enum<O>> implements IWorker {
     /**
      * Override this method if you need to execute code on each worker before {@link #run()} is called.
      */
-    protected void beforeRun() {
+    protected void beforeRun() throws Exception {
     }
 
     /**
@@ -124,7 +122,7 @@ public abstract class AbstractWorker<O extends Enum<O>> implements IWorker {
      *
      * Won't be called if an error occurs in {@link #beforeRun()} or {@link #timeStep(Enum)}.
      */
-    protected void afterRun() {
+    protected void afterRun() throws Exception {
     }
 
     /**
@@ -132,7 +130,17 @@ public abstract class AbstractWorker<O extends Enum<O>> implements IWorker {
      *
      * @see IWorker
      */
-    public void afterCompletion() {
+    @Override
+    public void afterCompletion() throws Exception {
+    }
+
+    /**
+     * Returns the test ID from the {@link TestContext}.
+     *
+     * @return the test ID
+     */
+    protected String getTestId() {
+        return testContext.getTestId();
     }
 
     /**
@@ -176,8 +184,13 @@ public abstract class AbstractWorker<O extends Enum<O>> implements IWorker {
 
     void increaseIteration() {
         iteration++;
-        if (logFrequency > 0 && iteration % logFrequency == 0) {
-            LOGGER.info(Thread.currentThread().getName() + " At iteration: " + iteration);
-        }
+    }
+
+    O getRandomOperation() {
+        return selector.select();
+    }
+
+    Probe getWorkerProbe() {
+        return workerProbe;
     }
 }

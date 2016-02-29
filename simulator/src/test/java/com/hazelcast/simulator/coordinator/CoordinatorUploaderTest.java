@@ -45,8 +45,8 @@ public class CoordinatorUploaderTest {
     private String testSuiteId = "testSuiteId";
 
     private File notExists = new File("/notExists");
-    private File uploadDirectory = new File("upload");
-    private File workerClassPathFile = new File("workerClassPath");
+    private File uploadDirectory = ensureExistingDirectory("upload");
+    private File workerClassPathFile = ensureExistingDirectory("workerClassPath");
     private String workerClassPath = workerClassPathFile.getAbsolutePath();
 
     private CoordinatorUploader coordinatorUploader;
@@ -62,9 +62,6 @@ public class CoordinatorUploaderTest {
         ClusterLayoutParameters clusterLayoutParameters = new ClusterLayoutParameters(null, null, 2, 0, 0, 2);
 
         clusterLayout = new ClusterLayout(componentRegistry, workerParameters, clusterLayoutParameters);
-
-        ensureExistingDirectory(uploadDirectory);
-        ensureExistingDirectory(workerClassPathFile);
 
         coordinatorUploader = new CoordinatorUploader(bash, componentRegistry, clusterLayout, hazelcastJARs, true, false,
                 workerClassPath, YOURKIT, testSuiteId);
@@ -88,7 +85,6 @@ public class CoordinatorUploaderTest {
         verify(hazelcastJARs, times(1)).prepare(false);
         verify(hazelcastJARs, times(2)).upload(contains("192.168.0."), anyString(), eq(singleton(OUT_OF_THE_BOX)));
         verifyNoMoreInteractions(hazelcastJARs);
-
         verifyNoMoreInteractions(bash);
     }
 
@@ -126,7 +122,6 @@ public class CoordinatorUploaderTest {
         verify(hazelcastJARs, times(1)).upload(contains("192.168.0.1"), anyString(), eq(versionSpecs));
         verify(hazelcastJARs, times(1)).upload(contains("192.168.0.2"), anyString(), eq(singleton("maven=3.5.2")));
         verifyNoMoreInteractions(hazelcastJARs);
-
         verifyNoMoreInteractions(bash);
     }
 
@@ -152,6 +147,7 @@ public class CoordinatorUploaderTest {
     @Test
     public void testUploadUploadDirectory_uploadDirectoryNotExists() {
         deleteQuiet(uploadDirectory);
+
         coordinatorUploader.uploadUploadDirectory();
 
         verifyNoMoreInteractions(bash);
@@ -161,6 +157,7 @@ public class CoordinatorUploaderTest {
     public void testUploadUploadDirectory_withException() {
         TestException exception = new TestException("expected");
         doThrow(exception).when(bash).uploadToRemoteSimulatorDir(contains("192.168.0."), anyString(), anyString());
+
         coordinatorUploader.uploadUploadDirectory();
     }
 

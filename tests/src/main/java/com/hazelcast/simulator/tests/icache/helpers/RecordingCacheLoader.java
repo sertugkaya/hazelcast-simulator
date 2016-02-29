@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,13 +34,11 @@ public class RecordingCacheLoader<K> implements CacheLoader<K, K>, Serializable 
 
     @Override
     public K load(final K key) {
-
-        if (loadDelayMs > 0) {
-            sleepMillis(loadDelayMs);
-        }
-
         if (key == null) {
             throw new NullPointerException("load null key!");
+        }
+        if (loadDelayMs > 0) {
+            sleepMillis(loadDelayMs);
         }
 
         loaded.put(key, key);
@@ -50,7 +48,6 @@ public class RecordingCacheLoader<K> implements CacheLoader<K, K>, Serializable 
 
     @Override
     public Map<K, K> loadAll(Iterable<? extends K> keys) {
-
         if (loadAllDelayMs > 0) {
             sleepMillis(loadAllDelayMs);
         }

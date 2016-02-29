@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import com.hazelcast.simulator.utils.ThrottlingLogger;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -61,8 +61,6 @@ public class ExtractorMapTest {
     public int indexValuesCount = 5;
     public double putProbability = 0.5;
     public boolean useIndex;
-
-    public Probe queryProbe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -102,35 +100,34 @@ public class ExtractorMapTest {
         return new Worker(operationSelectorBuilder);
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker(OperationSelectorBuilder<Operation> operationSelectorBuilder) {
             super(operationSelectorBuilder);
         }
 
-        private int getRandomKey() {
-            return abs(randomInt(keyCount)) % indexValuesCount;
-        }
-
         @Override
-        protected void timeStep(Operation operation) throws Exception {
+        protected void timeStep(Operation operation, Probe probe) throws Exception {
             int key = getRandomKey();
+            long started;
 
             switch (operation) {
                 case PUT:
                     SillySequence sillySequence = new SillySequence(key, nestedValuesCount);
+                    started = System.nanoTime();
                     map.put(key, sillySequence);
+                    probe.done(started);
                     break;
                 case QUERY:
                     int index = key % nestedValuesCount;
                     String query = format("payloadFromExtractor[%d]", index);
                     Predicate predicate = Predicates.equal(query, key);
-                    queryProbe.started();
+                    started = System.nanoTime();
                     Collection<SillySequence> result = null;
                     try {
                         result = map.values(predicate);
                     } finally {
-                        queryProbe.done();
+                        probe.done(started);
                     }
                     THROTTLING_LOGGER.info(format("Query 'payloadFromExtractor[%d]= %d' returned %d results.", index, key,
                             result.size()));
@@ -143,18 +140,22 @@ public class ExtractorMapTest {
             }
         }
 
+        private int getRandomKey() {
+            return abs(randomInt(keyCount)) % indexValuesCount;
+        }
+
         private void assertValidSequence(Integer key, SillySequence sillySequence) {
             int index = key % nestedValuesCount;
             assertEquals(key, sillySequence.payloadField.get(index));
         }
     }
 
-    @SuppressWarnings("unused")
     private static class SillySequence implements DataSerializable {
 
         int count;
         List<Integer> payloadField;
 
+        @SuppressWarnings("unused")
         SillySequence() {
         }
 

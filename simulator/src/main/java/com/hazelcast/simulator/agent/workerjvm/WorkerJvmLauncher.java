@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,8 +33,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.ensureExistingDirectory;
+import static com.hazelcast.simulator.utils.FileUtils.ensureExistingFile;
+import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
 import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
-import static com.hazelcast.simulator.utils.FileUtils.readObject;
 import static com.hazelcast.simulator.utils.FileUtils.writeText;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static com.hazelcast.simulator.utils.NativeUtils.execute;
@@ -43,6 +44,8 @@ import static java.lang.String.format;
 import static java.util.Arrays.asList;
 
 public class WorkerJvmLauncher {
+
+    public static final String WORKERS_HOME_NAME = "workers";
 
     private static final int WAIT_FOR_WORKER_STARTUP_INTERVAL_MILLIS = 500;
 
@@ -76,11 +79,7 @@ public class WorkerJvmLauncher {
             int workerIndex = workerJvmSettings.getWorkerIndex();
             LOGGER.info(format("Starting a Java Virtual Machine for %s Worker #%d", type, workerIndex));
 
-            String hzConfigFileName = (type == WorkerType.MEMBER) ? "hazelcast" : "client-hazelcast";
-            hzConfigFile = createTmpXmlFile(hzConfigFileName, workerJvmSettings.getHazelcastConfig());
-            log4jFile = createTmpXmlFile("worker-log4j", workerJvmSettings.getLog4jConfig());
             LOGGER.info("Spawning Worker JVM using settings: " + workerJvmSettings);
-
             WorkerJvm worker = startWorkerJvm();
             LOGGER.info(format("Finished starting a JVM for %s Worker #%d", type, workerIndex));
 
@@ -93,22 +92,20 @@ public class WorkerJvmLauncher {
         }
     }
 
-    private File createTmpXmlFile(String name, String content) throws IOException {
-        File tmpXmlFile = File.createTempFile(name, ".xml");
-        tmpXmlFile.deleteOnExit();
-        writeText(content, tmpXmlFile);
-
-        return tmpXmlFile;
-    }
-
     private WorkerJvm startWorkerJvm() throws IOException {
         int workerIndex = workerJvmSettings.getWorkerIndex();
         WorkerType type = workerJvmSettings.getWorkerType();
 
         SimulatorAddress workerAddress = new SimulatorAddress(AddressLevel.WORKER, agent.getAddressIndex(), workerIndex, 0);
-        String workerId = "worker-" + agent.getPublicAddress() + '-' + workerIndex + '-' + type.toLowerCase();
-        File workerHome = new File(testSuiteDir, workerId);
-        ensureExistingDirectory(workerHome);
+        String workerId = "worker-" + workerAddress + '-' + agent.getPublicAddress() + '-' + type.toLowerCase();
+        File workerHome = ensureExistingDirectory(testSuiteDir, workerId);
+
+        String hzConfigFileName = (type == WorkerType.MEMBER) ? "hazelcast" : "client-hazelcast";
+        hzConfigFile = ensureExistingFile(workerHome, hzConfigFileName + ".xml");
+        writeText(workerJvmSettings.getHazelcastConfig(), hzConfigFile);
+
+        log4jFile = ensureExistingFile(workerHome, "log4j.xml");
+        writeText(workerJvmSettings.getLog4jConfig(), log4jFile);
 
         WorkerJvm workerJvm = new WorkerJvm(workerAddress, workerId, workerHome);
 
@@ -137,8 +134,8 @@ public class WorkerJvmLauncher {
         for (int i = 0; i < loopCount; i++) {
             if (hasExited(worker)) {
                 throw new SpawnWorkerFailedException(format(
-                        "Startup of Worker on host %s failed, check log files in %s for more information!",
-                        agent.getPublicAddress(), worker.getWorkerHome()));
+                        "Startup of Worker %s on Agent %s failed, check log files in %s for more information!",
+                        worker.getAddress(), agent.getPublicAddress(), worker.getWorkerHome()));
             }
 
             String address = readAddress(worker);
@@ -151,8 +148,9 @@ public class WorkerJvmLauncher {
             sleepMillis(WAIT_FOR_WORKER_STARTUP_INTERVAL_MILLIS);
         }
 
-        throw new SpawnWorkerFailedException(format("Worker %s of Testsuite %s on Agent %s didn't start within %s seconds",
-                worker.getId(), agent.getTestSuite().getId(), agent.getPublicAddress(), workerTimeoutSec));
+        throw new SpawnWorkerFailedException(format(
+                "Worker %s on Agent %s didn't start within %s seconds, check log files in %s for more information!",
+                worker.getAddress(), agent.getPublicAddress(), workerTimeoutSec, worker.getWorkerHome()));
     }
 
     private String getJavaHome() {
@@ -178,7 +176,7 @@ public class WorkerJvmLauncher {
     }
 
     private void copyResourcesToWorkerId(String workerId) {
-        File workersDir = new File(getSimulatorHome(), "workers");
+        File workersDir = new File(getSimulatorHome(), WORKERS_HOME_NAME);
         String testSuiteId = agent.getTestSuite().getId();
         File uploadDirectory = new File(workersDir, testSuiteId + "/upload/").getAbsoluteFile();
         if (!uploadDirectory.exists() || !uploadDirectory.isDirectory()) {
@@ -210,7 +208,7 @@ public class WorkerJvmLauncher {
             return null;
         }
 
-        String address = readObject(file);
+        String address = fileAsText(file);
         deleteQuiet(file);
 
         return address;
@@ -283,10 +281,11 @@ public class WorkerJvmLauncher {
     }
 
     private String getClasspath() {
+        String simulatorHome = getSimulatorHome().getAbsolutePath();
         String hzVersionDirectory = directoryForVersionSpec(workerJvmSettings.getHazelcastVersionSpec());
         return CLASSPATH
-                + CLASSPATH_SEPARATOR + getSimulatorHome() + "/hz-lib/" + hzVersionDirectory + "/*"
-                + CLASSPATH_SEPARATOR + getSimulatorHome() + "/user-lib/*"
+                + CLASSPATH_SEPARATOR + simulatorHome + "/hz-lib/" + hzVersionDirectory + "/*"
+                + CLASSPATH_SEPARATOR + simulatorHome + "/user-lib/*"
                 + CLASSPATH_SEPARATOR + new File(agent.getTestSuiteDir(), "lib/*").getAbsolutePath();
     }
 

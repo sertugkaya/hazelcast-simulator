@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,14 @@ import com.hazelcast.simulator.protocol.operation.StartTestOperation;
 import com.hazelcast.simulator.protocol.operation.StartTestPhaseOperation;
 import com.hazelcast.simulator.protocol.operation.StopTestOperation;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
+import com.hazelcast.simulator.protocol.registry.TargetType;
 import com.hazelcast.simulator.test.TestCase;
 import com.hazelcast.simulator.test.TestPhase;
 import com.hazelcast.simulator.test.TestSuite;
 import org.apache.log4j.Logger;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -73,17 +76,18 @@ final class TestCaseRunner implements TestPhaseListener {
     private final ComponentRegistry componentRegistry;
 
     private final String prefix;
-    private final ConcurrentMap<TestPhase, CountDownLatch> testPhaseSyncMap;
+    private final Map<TestPhase, CountDownLatch> testPhaseSyncMap;
 
     private final boolean isVerifyEnabled;
-    private final boolean isPassiveMembers;
+    private final TargetType targetType;
+    private final int targetCount;
 
     private final boolean monitorPerformance;
     private final int logPerformanceIntervalSeconds;
     private final int logRunPhaseIntervalSeconds;
 
     TestCaseRunner(int testIndex, TestCase testCase, Coordinator coordinator, int paddingLength,
-                   ConcurrentMap<TestPhase, CountDownLatch> testPhaseSyncMap) {
+                   Map<TestPhase, CountDownLatch> testPhaseSyncMap) {
         this.testIndex = testIndex;
         this.testCase = testCase;
         this.testCaseId = testCase.getId();
@@ -99,9 +103,8 @@ final class TestCaseRunner implements TestPhaseListener {
 
         CoordinatorParameters coordinatorParameters = coordinator.getCoordinatorParameters();
         this.isVerifyEnabled = coordinatorParameters.isVerifyEnabled();
-
-        ClusterLayoutParameters clusterLayoutParameters = coordinator.getClusterLayoutParameters();
-        this.isPassiveMembers = (coordinatorParameters.isPassiveMembers() && clusterLayoutParameters.getClientWorkerCount() > 0);
+        this.targetType = coordinatorParameters.getTargetType(componentRegistry.hasClientWorkers());
+        this.targetCount = coordinatorParameters.getTargetCount();
 
         WorkerParameters workerParameters = coordinator.getWorkerParameters();
         this.monitorPerformance = workerParameters.isMonitorPerformance();
@@ -120,6 +123,7 @@ final class TestCaseRunner implements TestPhaseListener {
 
     void run() {
         try {
+            initPerformanceMonitor();
             createTest();
             runPhase(SETUP);
 
@@ -143,6 +147,12 @@ final class TestCaseRunner implements TestPhaseListener {
         }
     }
 
+    private void initPerformanceMonitor() {
+        if (monitorPerformance) {
+            performanceStateContainer.init(testCaseId);
+        }
+    }
+
     private void createTest() {
         echo("Starting Test initialization");
         remoteClient.sendToAllWorkers(new CreateTestOperation(testIndex, testCase));
@@ -152,6 +162,7 @@ final class TestCaseRunner implements TestPhaseListener {
     private void runPhase(TestPhase testPhase) {
         if (testSuite.isFailFast() && failureContainer.hasCriticalFailure(testCaseId)) {
             echo("Skipping Test " + testPhase.desc() + " (critical failure)");
+            decrementAndGetCountDownLatch(testPhase);
             return;
         }
 
@@ -167,8 +178,9 @@ final class TestCaseRunner implements TestPhaseListener {
     }
 
     private void startTest() {
-        echo(format("Starting Test start (%s members)", (isPassiveMembers) ? "passive" : "active"));
-        remoteClient.sendToTestOnAllWorkers(testCaseId, new StartTestOperation(isPassiveMembers));
+        echo(format("Starting Test start on %s", targetType.toString(targetCount)));
+        List<String> targetWorkers = componentRegistry.getWorkerAddresses(targetType, targetCount);
+        remoteClient.sendToTestOnAllWorkers(testCaseId, new StartTestOperation(targetType, targetWorkers));
         echo("Completed Test start");
     }
 
@@ -224,8 +236,7 @@ final class TestCaseRunner implements TestPhaseListener {
             return;
         }
         try {
-            CountDownLatch latch = testPhaseSyncMap.get(testPhase);
-            latch.countDown();
+            CountDownLatch latch = decrementAndGetCountDownLatch(testPhase);
             latch.await();
             if (LOG_TEST_PHASE_COMPLETION.putIfAbsent(testPhase, true) == null) {
                 LOGGER.info("Completed TestPhase " + testPhase.desc());
@@ -236,11 +247,16 @@ final class TestCaseRunner implements TestPhaseListener {
     }
 
     private int getExpectedWorkerCount(TestPhase testPhase) {
-        int workerCount = componentRegistry.workerCount();
-        if (workerCount == 0) {
-            return 0;
+        return (testPhase.isGlobal()) ? 1 : componentRegistry.workerCount();
+    }
+
+    private CountDownLatch decrementAndGetCountDownLatch(TestPhase testPhase) {
+        if (testPhaseSyncMap == null) {
+            return new CountDownLatch(0);
         }
-        return (testPhase.isGlobal()) ? 1 : workerCount;
+        CountDownLatch latch = testPhaseSyncMap.get(testPhase);
+        latch.countDown();
+        return latch;
     }
 
     private void echo(String msg) {
@@ -276,11 +292,11 @@ final class TestCaseRunner implements TestPhaseListener {
             int sleepLoops = sleepSeconds / logRunPhaseIntervalSeconds;
             for (int i = 1; i <= sleepLoops && isRunning; i++) {
                 if (failureContainer.hasCriticalFailure(testCaseId)) {
-                    echo("Critical failure detected, aborting execution of test");
+                    echo("Critical failure detected, aborting run phase");
                     return;
                 }
                 if (failureContainer.hasCriticalFailure() && testSuite.isFailFast()) {
-                    echo("Aborting testsuite due to failure");
+                    echo("Aborting run phase due to failure");
                     return;
                 }
 

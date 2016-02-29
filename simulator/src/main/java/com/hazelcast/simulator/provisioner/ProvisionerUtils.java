@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ import java.io.File;
 import java.util.LinkedList;
 import java.util.List;
 
-import static com.hazelcast.simulator.utils.CloudProviderUtils.isStatic;
+import static com.hazelcast.simulator.utils.CloudProviderUtils.isCloudProvider;
+import static com.hazelcast.simulator.utils.CloudProviderUtils.isLocal;
 import static java.lang.String.format;
 
 final class ProvisionerUtils {
@@ -43,9 +44,15 @@ final class ProvisionerUtils {
         return initScript;
     }
 
-    static void ensureNotStaticCloudProvider(SimulatorProperties properties, String action) {
-        if (isStatic(properties)) {
-            throw new CommandLineExitException(format("Cannot execute '%s' in static setup", action));
+    static void ensureIsRemoteSetup(SimulatorProperties properties, String action) {
+        if (isLocal(properties)) {
+            throw new CommandLineExitException(format("Cannot execute '%s' in local setup", action));
+        }
+    }
+
+    static void ensureIsCloudProviderSetup(SimulatorProperties properties, String action) {
+        if (!isCloudProvider(properties)) {
+            throw new CommandLineExitException(format("Cannot execute '%s' in local or static setup", action));
         }
     }
 

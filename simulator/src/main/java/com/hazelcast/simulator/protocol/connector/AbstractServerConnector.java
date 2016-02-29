@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.core.SimulatorMessage;
 import com.hazelcast.simulator.protocol.core.SimulatorProtocolException;
+import com.hazelcast.simulator.protocol.operation.OperationTypeCounter;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -38,6 +39,7 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -48,6 +50,7 @@ import static com.hazelcast.simulator.protocol.operation.OperationCodec.toJson;
 import static com.hazelcast.simulator.protocol.operation.OperationType.getOperationType;
 import static com.hazelcast.simulator.utils.CommonUtils.joinThread;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
+import static com.hazelcast.simulator.utils.ExecutorFactory.createFixedThreadPool;
 import static java.lang.String.format;
 
 /**
@@ -56,11 +59,7 @@ import static java.lang.String.format;
 abstract class AbstractServerConnector implements ServerConnector {
 
     private static final Logger LOGGER = Logger.getLogger(AbstractServerConnector.class);
-
     private static final SimulatorMessage POISON_PILL = new SimulatorMessage(null, null, 0, null, null);
-
-    private final EventLoopGroup bossGroup = new NioEventLoopGroup();
-    private final EventLoopGroup workerGroup = new NioEventLoopGroup();
 
     private final AtomicLong messageIds = new AtomicLong();
     private final ConcurrentMap<String, ResponseFuture> messageQueueFutures = new ConcurrentHashMap<String, ResponseFuture>();
@@ -72,18 +71,28 @@ abstract class AbstractServerConnector implements ServerConnector {
     private final int addressIndex;
     private final int port;
 
+    private final EventLoopGroup group;
+    private final ExecutorService executorService;
+
     private Channel channel;
 
-    AbstractServerConnector(ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress, int port) {
+    AbstractServerConnector(ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress, int port,
+                            int threadPoolSize) {
+        this(futureMap, localAddress, port, threadPoolSize, createFixedThreadPool(threadPoolSize, "AbstractServerConnector"));
+    }
+
+    AbstractServerConnector(ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress, int port,
+                            int threadPoolSize, ExecutorService executorService) {
         this.futureMap = futureMap;
         this.localAddress = localAddress;
         this.addressIndex = localAddress.getAddressIndex();
         this.port = port;
+
+        this.group = new NioEventLoopGroup(threadPoolSize);
+        this.executorService = executorService;
     }
 
     abstract void configureServerPipeline(ChannelPipeline pipeline, ServerConnector serverConnector);
-
-    abstract void connectorShutdown();
 
     abstract ChannelGroup getChannelGroup();
 
@@ -100,7 +109,7 @@ abstract class AbstractServerConnector implements ServerConnector {
 
     private ServerBootstrap getServerBootstrap() {
         ServerBootstrap bootstrap = new ServerBootstrap();
-        bootstrap.group(bossGroup, workerGroup)
+        bootstrap.group(group)
                 .channel(NioServerSocketChannel.class)
                 .localAddress(new InetSocketAddress(port))
                 .childHandler(new ChannelInitializer<SocketChannel>() {
@@ -115,15 +124,15 @@ abstract class AbstractServerConnector implements ServerConnector {
     @Override
     public void shutdown() {
         messageQueueThread.shutdown();
-        connectorShutdown();
         channel.close().syncUninterruptibly();
+        group.shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS).syncUninterruptibly();
 
-        workerGroup.
-                shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
-                .syncUninterruptibly();
-        bossGroup
-                .shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS)
-                .syncUninterruptibly();
+        try {
+            executorService.shutdown();
+            executorService.awaitTermination(1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            LOGGER.error("Error during shutdown of ExecutorService", e);
+        }
     }
 
     @Override
@@ -171,6 +180,18 @@ abstract class AbstractServerConnector implements ServerConnector {
         return writeAsync(message);
     }
 
+    EventLoopGroup getEventLoopGroup() {
+        return group;
+    }
+
+    ExecutorService getExecutorService() {
+        return executorService;
+    }
+
+    int getMessageQueueSizeInternal() {
+        return messageQueue.size();
+    }
+
     ResponseFuture submit(SimulatorAddress source, SimulatorAddress destination, SimulatorOperation operation) {
         SimulatorMessage message = createSimulatorMessage(source, destination, operation);
         String futureKey = createFutureKey(source, message.getMessageId(), 0);
@@ -190,6 +211,7 @@ abstract class AbstractServerConnector implements ServerConnector {
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace(format("[%d] %s created ResponseFuture %s", messageId, localAddress, futureKey));
         }
+        OperationTypeCounter.sent(message.getOperationType());
         getChannelGroup().writeAndFlush(message);
 
         return future;
@@ -209,6 +231,7 @@ abstract class AbstractServerConnector implements ServerConnector {
                 try {
                     SimulatorMessage message = messageQueue.take();
                     if (POISON_PILL.equals(message)) {
+                        LOGGER.info("ServerConnectorMessageQueueThread received POISON_PILL and will stop...");
                         break;
                     }
 

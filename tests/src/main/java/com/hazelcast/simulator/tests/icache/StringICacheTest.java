@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 
 import javax.cache.Cache;
 import javax.cache.CacheManager;
@@ -57,11 +57,9 @@ public class StringICacheTest {
     public int valueCount = 10000;
     // if we use the putAndGet (so returning a value) or the put (which returns void)
     public boolean useGetAndPut = true;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int minNumberOfMembers = 0;
     public double putProb = 0.1;
-    public Probe putProbe;
-    public Probe getProbe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -107,31 +105,32 @@ public class StringICacheTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker() {
             super(operationSelectorBuilder);
         }
 
         @Override
-        public void timeStep(Operation operation) {
+        public void timeStep(Operation operation, Probe probe) {
             String key = randomKey();
+            long started;
 
             switch (operation) {
                 case PUT:
                     String value = randomValue();
-                    putProbe.started();
+                    started = System.nanoTime();
                     if (useGetAndPut) {
                         cache.getAndPut(key, value);
                     } else {
                         cache.put(key, value);
                     }
-                    putProbe.done();
+                    probe.done(started);
                     break;
                 case GET:
-                    getProbe.started();
+                    started = System.nanoTime();
                     cache.get(key);
-                    getProbe.done();
+                    probe.done(started);
                     break;
                 default:
                     throw new UnsupportedOperationException();

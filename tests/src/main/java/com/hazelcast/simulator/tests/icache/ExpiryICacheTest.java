@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,41 +24,34 @@ import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
+import com.hazelcast.simulator.utils.AssertTask;
 import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 
-import javax.cache.CacheManager;
 import javax.cache.expiry.CreatedExpiryPolicy;
 import javax.cache.expiry.Duration;
 import javax.cache.expiry.ExpiryPolicy;
 
-import static com.hazelcast.simulator.tests.icache.helpers.CacheUtils.createCacheManager;
+import static com.hazelcast.simulator.tests.icache.helpers.CacheUtils.getCache;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepSeconds;
-import static com.hazelcast.simulator.utils.FormatUtils.humanReadableByteCount;
+import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
+import static org.junit.Assert.assertEquals;
 
 public class ExpiryICacheTest {
 
     private static final ILogger LOGGER = Logger.getLogger(ExpiryICacheTest.class);
 
-    // properties
+    // default keyCount entries of int, is upper bound to approx 8MB possible max, if all put inside expiryPolicy time
+    public int keyCount = 1000000;
     public String basename = ExpiryICacheTest.class.getSimpleName();
-    public double maxHeapUsagePercentage = 80;
 
     private final ExpiryPolicy expiryPolicy = new CreatedExpiryPolicy(Duration.ONE_MINUTE);
 
-    private ICache<Long, Long> cache;
+    private ICache<Integer, Integer> cache;
 
     @Setup
     public void setup(TestContext testContext) {
         HazelcastInstance hazelcastInstance = testContext.getTargetInstance();
-
-        CacheManager cacheManager = createCacheManager(hazelcastInstance);
-        cache = (ICache<Long, Long>) cacheManager.<Long, Long>getCache(basename);
-    }
-
-    @Verify(global = false)
-    public void globalVerify() {
-        LOGGER.info(basename + " cache size = " + cache.size());
-        logMemoryStatistics();
+        cache = getCache(hazelcastInstance, basename);
     }
 
     @RunWithWorker
@@ -67,55 +60,32 @@ public class ExpiryICacheTest {
     }
 
     private class Worker extends AbstractMonotonicWorker {
-
-        @Override
-        protected void beforeRun() {
-            LOGGER.info(basename + ".beforeRun()");
-            logMemoryStatistics();
-        }
-
         @Override
         public void timeStep() {
-            double usedPercentage = heapUsedPercentage();
-            if (usedPercentage >= maxHeapUsagePercentage) {
-                LOGGER.info("heap used: " + usedPercentage + "% cache size: " + cache.size());
-                sleepSeconds(10);
-            } else {
-                for (int i = 0; i < 1000; i++) {
-                    if (getIteration() % 100000 == 0) {
-                        LOGGER.info("At " + getIteration() + " heap used: " + usedPercentage + "% cache size: " + cache.size());
-                    }
-
-                    long key = getRandom().nextLong();
-                    cache.put(key, 0L, expiryPolicy);
-                }
+            int key = randomInt(keyCount);
+            if (!cache.containsKey(key)) {
+                cache.put(key, 0, expiryPolicy);
             }
-        }
-
-        @Override
-        protected void afterRun() {
-            LOGGER.info(basename + ".afterRun()");
-            logMemoryStatistics();
-        }
-
-        private double heapUsedPercentage() {
-            long total = Runtime.getRuntime().totalMemory();
-            long max = Runtime.getRuntime().maxMemory();
-            return (100d * total) / max;
         }
     }
 
-    private void logMemoryStatistics() {
-        long free = Runtime.getRuntime().freeMemory();
-        long total = Runtime.getRuntime().totalMemory();
-        long baseLineUsed = total - free;
-        long maxBytes = Runtime.getRuntime().maxMemory();
-        double usedOfMax = 100.0 * ((double) baseLineUsed / (double) maxBytes);
+    @Verify(global = true)
+    public void globalVerify() {
+        sleepSeconds(61);
 
-        LOGGER.info(basename + " free = " + humanReadableByteCount(free, true) + " = " + free);
-        LOGGER.info(basename + " used = " + humanReadableByteCount(baseLineUsed, true) + " = " + baseLineUsed);
-        LOGGER.info(basename + " max = " + humanReadableByteCount(maxBytes, true) + " = " + maxBytes);
-        LOGGER.info(basename + " usedOfMax = " + usedOfMax + '%');
+        // provoke expire after TTL
+        for (int i = 0; i < keyCount; i++) {
+            cache.containsKey(i);
+        }
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                int cacheSize = cache.size();
+                LOGGER.info(basename + " ICache size: " + cacheSize);
+                assertEquals(basename + " ICache should be empty, but TTL events are not processed", 0, cacheSize);
+            }
+        });
     }
 
     public static void main(String[] args) throws Exception {

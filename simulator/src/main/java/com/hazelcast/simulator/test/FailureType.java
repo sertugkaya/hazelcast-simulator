@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,13 +72,11 @@ public enum FailureType {
     }
 
     public static String getIdsAsString() {
-        FailureType[] types = FailureType.values();
         StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < types.length; i++) {
-            builder.append(types[i].id);
-            if (i < types.length - 1) {
-                builder.append(", ");
-            }
+        String delimiter = "";
+        for (FailureType type : values()) {
+            builder.append(delimiter).append(type.id);
+            delimiter = ", ";
         }
         return builder.toString();
     }

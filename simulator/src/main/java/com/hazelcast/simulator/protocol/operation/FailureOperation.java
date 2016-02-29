@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,9 @@ import com.hazelcast.simulator.test.TestSuite;
 import static com.hazelcast.simulator.utils.CommonUtils.throwableToString;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 
+/**
+ * Reports a Simulator Worker failure.
+ */
 public class FailureOperation implements SimulatorOperation {
 
     private final long timestamp = System.currentTimeMillis();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,9 +30,10 @@ import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.Warmup;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.InternalCompletableFuture;
+import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.UrgentSystemOperation;
 
@@ -48,7 +49,7 @@ public class GenericOperationTest {
 
     private static final ILogger LOGGER = Logger.getLogger(GenericOperationTest.class);
 
-    public enum PrioritySelector {
+    private enum PrioritySelector {
         PRIORITY,
         NORMAL
     }
@@ -56,10 +57,6 @@ public class GenericOperationTest {
     // properties
     public double priorityProb = 0.1;
     public int delayNs = 100 * 1000;
-
-    // probes
-    public Probe normalLatency;
-    public Probe priorityLatency;
 
     private OperationService operationService;
     private Address[] memberAddresses;
@@ -100,22 +97,22 @@ public class GenericOperationTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<PrioritySelector> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<PrioritySelector> {
 
         public Worker() {
             super(operationSelectorBuilder);
         }
 
         @Override
-        protected void timeStep(PrioritySelector operationSelector) {
+        protected void timeStep(PrioritySelector operationSelector, Probe probe) {
             Address address = randomAddress();
 
             switch (operationSelector) {
                 case PRIORITY:
-                    invokePriorityOperation(address);
+                    invokeOperation(new GenericPriorityOperation(delayNs), address, probe);
                     break;
                 case NORMAL:
-                    invokeNormalOperation(address);
+                    invokeOperation(new GenericOperation(delayNs), address, probe);
                     break;
                 default:
                     throw new UnsupportedOperationException();
@@ -126,33 +123,24 @@ public class GenericOperationTest {
             return memberAddresses[randomInt(memberAddresses.length)];
         }
 
-        private void invokeNormalOperation(Address address) {
-            GenericOperation operation = new GenericOperation(delayNs);
-            normalLatency.started();
+        private void invokeOperation(Operation operation, Address address, Probe probe) {
+            long started = System.nanoTime();
             InternalCompletableFuture future = operationService.invokeOnTarget(null, operation, address);
             future.getSafely();
-            normalLatency.done();
-        }
-
-        private void invokePriorityOperation(Address address) {
-            GenericPriorityOperation operation = new GenericPriorityOperation(delayNs);
-            priorityLatency.started();
-            InternalCompletableFuture future = operationService.invokeOnTarget(null, operation, address);
-            future.getSafely();
-            priorityLatency.done();
+            probe.done(started);
         }
     }
 
-    public static class GenericOperation extends AbstractOperation {
+    private static class GenericOperation extends AbstractOperation {
 
-        public int delayNanos;
+        private int delayNanos;
 
-        public GenericOperation(int delayNanos) {
+        GenericOperation(int delayNanos) {
             this();
             this.delayNanos = delayNanos;
         }
 
-        public GenericOperation() {
+        GenericOperation() {
             setPartitionId(-1);
         }
 
@@ -177,13 +165,13 @@ public class GenericOperationTest {
         }
     }
 
-    @SuppressWarnings("unused")
-    public static class GenericPriorityOperation extends GenericOperation implements UrgentSystemOperation {
+    private static class GenericPriorityOperation extends GenericOperation implements UrgentSystemOperation {
 
+        @SuppressWarnings("unused")
         public GenericPriorityOperation() {
         }
 
-        public GenericPriorityOperation(int delayNanos) {
+        GenericPriorityOperation(int delayNanos) {
             super(delayNanos);
         }
     }

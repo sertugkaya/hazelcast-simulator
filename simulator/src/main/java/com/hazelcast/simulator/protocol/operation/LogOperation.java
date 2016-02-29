@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,19 @@ package com.hazelcast.simulator.protocol.operation;
 
 import org.apache.log4j.Level;
 
+/**
+ * Writes the message with the requested log level to the local logging framework.
+ */
 public class LogOperation implements SimulatorOperation {
 
+    /**
+     * Defines the message which should be logged.
+     */
     private final String message;
+
+    /**
+     * Defines the desired log level of the message.
+     */
     private final String level;
 
     public LogOperation(String message) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,10 +36,18 @@ import static com.hazelcast.simulator.worker.performance.PerformanceUtils.ONE_SE
 import static com.hazelcast.simulator.worker.performance.PerformanceUtils.writeThroughputHeader;
 import static com.hazelcast.simulator.worker.performance.PerformanceUtils.writeThroughputStats;
 
+/**
+ * Container for performance related values for a single Simulator Test.
+ *
+ * Has methods to update the performance values and write them to files.
+ *
+ * Holds a map of {@link Histogram} for each {@link com.hazelcast.simulator.probes.Probe} of a Simulator Test.
+ */
 final class PerformanceTracker {
 
-    private final File throughputFile;
     private final Map<String, HistogramLogWriter> histogramLogWriterMap = new HashMap<String, HistogramLogWriter>();
+
+    private final File throughputFile;
     private final long testStartedTimestamp;
 
     private long lastTimestamp;
@@ -59,15 +67,15 @@ final class PerformanceTracker {
     private boolean isUpdated;
 
     PerformanceTracker(String testId, Collection<String> probeNames, long testStartedTimestamp) {
-        throughputFile = new File("throughput-" + testId + ".txt");
+        this.throughputFile = new File("throughput-" + testId + ".txt");
+        this.testStartedTimestamp = testStartedTimestamp;
+        this.lastTimestamp = testStartedTimestamp;
+
         writeThroughputHeader(throughputFile, false);
 
         for (String probeName : probeNames) {
             histogramLogWriterMap.put(probeName, createHistogramLogWriter(testId, probeName, testStartedTimestamp));
         }
-
-        this.testStartedTimestamp = testStartedTimestamp;
-        this.lastTimestamp = testStartedTimestamp;
     }
 
     long getIntervalOperationCount() {
@@ -155,7 +163,7 @@ final class PerformanceTracker {
         return probeResults;
     }
 
-    private static HistogramLogWriter createHistogramLogWriter(String testId, String probeName, long baseTime) {
+    static HistogramLogWriter createHistogramLogWriter(String testId, String probeName, long baseTime) {
         try {
             File latencyFile = getLatencyFile(testId, probeName);
             HistogramLogWriter histogramLogWriter = new HistogramLogWriter(latencyFile);
@@ -169,7 +177,7 @@ final class PerformanceTracker {
         }
     }
 
-    private static HistogramLogReader createHistogramLogReader(String testName, String probeName) {
+    static HistogramLogReader createHistogramLogReader(String testName, String probeName) {
         try {
             File latencyFile = getLatencyFile(testName, probeName);
             return new HistogramLogReader(latencyFile);

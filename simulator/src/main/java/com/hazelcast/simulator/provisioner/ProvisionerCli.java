@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
  */
 package com.hazelcast.simulator.provisioner;
 
-import com.hazelcast.simulator.common.AgentsFile;
 import com.hazelcast.simulator.common.SimulatorProperties;
 import com.hazelcast.simulator.utils.Bash;
+import com.hazelcast.simulator.utils.jars.HazelcastJARs;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -26,8 +26,10 @@ import org.jclouds.compute.ComputeService;
 import static com.hazelcast.simulator.common.SimulatorProperties.PROPERTIES_FILE_NAME;
 import static com.hazelcast.simulator.utils.CliUtils.initOptionsWithHelp;
 import static com.hazelcast.simulator.utils.CliUtils.printHelpAndExit;
-import static com.hazelcast.simulator.utils.CloudProviderUtils.isStatic;
+import static com.hazelcast.simulator.utils.CloudProviderUtils.isCloudProvider;
 import static com.hazelcast.simulator.utils.SimulatorUtils.loadSimulatorProperties;
+import static com.hazelcast.simulator.utils.jars.HazelcastJARs.isPrepareRequired;
+import static java.util.Collections.singleton;
 
 final class ProvisionerCli {
 
@@ -41,12 +43,16 @@ final class ProvisionerCli {
     private final OptionSpec installSpec = parser.accepts("install",
             "Installs Simulator on all provisioned machines.");
 
-    private final OptionSpec listAgentsSpec = parser.accepts("list",
-            "Lists the provisioned machines (from " + AgentsFile.NAME + " file).");
+    private final OptionSpec uploadHazelcastSpec = parser.accepts("uploadHazelcast",
+            "If defined --install will upload the Hazelcast JARs as well.");
+
+    private final OptionSpec<Boolean> enterpriseEnabledSpec = parser.accepts("enterpriseEnabled",
+            "Use JARs of Hazelcast Enterprise Edition.")
+            .withRequiredArg().ofType(Boolean.class).defaultsTo(false);
 
     private final OptionSpec<String> downloadSpec = parser.accepts("download",
             "Download all files from the remote Worker directories. Use --clean to delete all Worker directories.")
-            .withOptionalArg().defaultsTo("workers").ofType(String.class);
+            .withOptionalArg().ofType(String.class).defaultsTo("workers");
 
     private final OptionSpec cleanSpec = parser.accepts("clean",
             "Cleans the remote Worker directories on the provisioned machines.");
@@ -71,9 +77,19 @@ final class ProvisionerCli {
         OptionSet options = initOptionsWithHelp(cli.parser, args);
 
         SimulatorProperties properties = loadSimulatorProperties(options, cli.propertiesFileSpec);
-        ComputeService computeService = isStatic(properties) ? null : new ComputeServiceBuilder(properties).build();
+        ComputeService computeService = (isCloudProvider(properties) ? new ComputeServiceBuilder(properties).build() : null);
         Bash bash = new Bash(properties);
-        return new Provisioner(properties, computeService, bash);
+
+        HazelcastJARs hazelcastJARs = null;
+        boolean enterpriseEnabled = options.valueOf(cli.enterpriseEnabledSpec);
+        if (options.has(cli.uploadHazelcastSpec)) {
+            String hazelcastVersionSpec = properties.getHazelcastVersionSpec();
+            if (isPrepareRequired(hazelcastVersionSpec) || !enterpriseEnabled) {
+                hazelcastJARs = HazelcastJARs.newInstance(bash, properties, singleton(hazelcastVersionSpec));
+            }
+        }
+
+        return new Provisioner(properties, computeService, bash, hazelcastJARs, enterpriseEnabled);
     }
 
     static void run(String[] args, Provisioner provisioner) {
@@ -86,8 +102,6 @@ final class ProvisionerCli {
                 provisioner.scale(size);
             } else if (options.has(cli.installSpec)) {
                 provisioner.installSimulator();
-            } else if (options.has(cli.listAgentsSpec)) {
-                provisioner.listMachines();
             } else if (options.has(cli.downloadSpec)) {
                 String dir = options.valueOf(cli.downloadSpec);
                 provisioner.download(dir);

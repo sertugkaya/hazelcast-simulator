@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public class PerformanceMonitorLatencyTest {
     private static final long LATENCY_NANOS = TimeUnit.MICROSECONDS.toNanos(20);
 
     @InjectProbe(useForThroughput = true)
-    Probe latencyProbe;
+    Probe probe;
 
     private TestContext testContext;
 
@@ -45,7 +45,7 @@ public class PerformanceMonitorLatencyTest {
     @Run
     public void run() {
         while (!testContext.isStopped()) {
-            latencyProbe.recordValue(LATENCY_NANOS);
+            probe.recordValue(LATENCY_NANOS);
             sleepMillis(1);
         }
     }

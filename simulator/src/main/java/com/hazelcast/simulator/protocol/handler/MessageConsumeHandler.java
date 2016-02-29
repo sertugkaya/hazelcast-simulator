@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.apache.log4j.Logger;
 
+import java.util.concurrent.ExecutorService;
+
 import static com.hazelcast.simulator.protocol.operation.OperationCodec.fromSimulatorMessage;
 import static java.lang.String.format;
 
@@ -40,23 +42,30 @@ public class MessageConsumeHandler extends SimpleChannelInboundHandler<Simulator
     private final AddressLevel addressLevel;
 
     private final OperationProcessor processor;
+    private final ExecutorService executorService;
 
-    public MessageConsumeHandler(SimulatorAddress localAddress, OperationProcessor processor) {
+    public MessageConsumeHandler(SimulatorAddress localAddress, OperationProcessor processor, ExecutorService executorService) {
         this.localAddress = localAddress;
         this.addressLevel = localAddress.getAddressLevel();
 
         this.processor = processor;
+        this.executorService = executorService;
     }
 
     @Override
-    public void channelRead0(ChannelHandlerContext ctx, SimulatorMessage msg) {
-        long messageId = msg.getMessageId();
+    public void channelRead0(final ChannelHandlerContext ctx, final SimulatorMessage msg) {
+        final long messageId = msg.getMessageId();
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace(format("[%d] %s %s MessageConsumeHandler is consuming message...", messageId, addressLevel,
                     localAddress));
         }
 
-        ResponseType responseType = processor.process(fromSimulatorMessage(msg), msg.getSource());
-        ctx.writeAndFlush(new Response(messageId, msg.getSource(), localAddress, responseType));
+        executorService.submit(new Runnable() {
+            @Override
+            public void run() {
+                ResponseType responseType = processor.process(fromSimulatorMessage(msg), msg.getSource());
+                ctx.writeAndFlush(new Response(messageId, msg.getSource(), localAddress, responseType));
+            }
+        });
     }
 }

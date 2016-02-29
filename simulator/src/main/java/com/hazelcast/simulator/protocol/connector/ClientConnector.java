@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ package com.hazelcast.simulator.protocol.connector;
 
 import com.hazelcast.simulator.protocol.core.Response;
 import com.hazelcast.simulator.protocol.core.ResponseFuture;
-import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.core.SimulatorMessage;
 import com.hazelcast.simulator.protocol.core.SimulatorProtocolException;
+import com.hazelcast.simulator.protocol.operation.OperationTypeCounter;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -33,14 +33,11 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import org.apache.log4j.Logger;
 
 import java.net.InetSocketAddress;
-import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.simulator.protocol.core.ResponseFuture.createFutureKey;
 import static com.hazelcast.simulator.protocol.core.ResponseFuture.createInstance;
-import static com.hazelcast.simulator.protocol.core.ResponseFuture.getMessageIdFromFutureKey;
-import static com.hazelcast.simulator.protocol.core.ResponseFuture.getSourceFromFutureKey;
 import static com.hazelcast.simulator.protocol.core.SimulatorMessageCodec.getMessageId;
 import static com.hazelcast.simulator.protocol.core.SimulatorMessageCodec.getSourceAddress;
 import static java.lang.String.format;
@@ -68,8 +65,8 @@ public class ClientConnector {
     private Channel channel;
 
     ClientConnector(ClientPipelineConfigurator pipelineConfigurator, EventLoopGroup group,
-                           ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress,
-                           SimulatorAddress remoteAddress, int remoteIndex, String remoteHost, int remotePort) {
+                    ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress,
+                    SimulatorAddress remoteAddress, int remoteIndex, String remoteHost, int remotePort) {
         this.pipelineConfigurator = pipelineConfigurator;
         this.group = group;
         this.futureMap = futureMap;
@@ -111,9 +108,6 @@ public class ClientConnector {
         if (channel.isOpen()) {
             channel.close().syncUninterruptibly();
         }
-
-        // take care about eventually pending ResponseFuture instances
-        handlePendingResponseFutures();
     }
 
     public ConcurrentMap<String, ResponseFuture> getFutureMap() {
@@ -133,12 +127,8 @@ public class ClientConnector {
         return getResponse(future);
     }
 
-    public Response write(ByteBuf buffer) {
-        ResponseFuture future = writeAsync(buffer);
-        return getResponse(future);
-    }
-
     public ResponseFuture writeAsync(SimulatorMessage message) {
+        OperationTypeCounter.sent(message.getOperationType());
         return writeAsync(message.getSource(), message.getMessageId(), message);
     }
 
@@ -162,16 +152,6 @@ public class ClientConnector {
             return future.get();
         } catch (InterruptedException e) {
             throw new SimulatorProtocolException("ResponseFuture.get() got interrupted!", e);
-        }
-    }
-
-    private void handlePendingResponseFutures() {
-        for (Map.Entry<String, ResponseFuture> futureEntry : futureMap.entrySet()) {
-            String futureKey = futureEntry.getKey();
-            LOGGER.warn(format("ResponseFuture %s still pending after shutdown!", futureKey));
-            Response response = new Response(getMessageIdFromFutureKey(futureKey), getSourceFromFutureKey(futureKey));
-            response.addResponse(localAddress, ResponseType.EXCEPTION_DURING_OPERATION_EXECUTION);
-            futureEntry.getValue().set(response);
         }
     }
 }

@@ -2,12 +2,12 @@ package com.hazelcast.simulator.utils;
 
 import com.hazelcast.core.Cluster;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.HazelcastInstanceAware;
 import com.hazelcast.core.Member;
-import com.hazelcast.simulator.common.messaging.Message;
-import com.hazelcast.simulator.common.messaging.MessageAddress;
+import com.hazelcast.simulator.worker.WorkerType;
+import org.junit.AfterClass;
 import org.junit.Test;
 
+import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -17,10 +17,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static com.hazelcast.simulator.utils.ExecutorFactory.createScheduledThreadPool;
-import static com.hazelcast.simulator.utils.HazelcastUtils.injectHazelcastInstance;
+import static com.hazelcast.simulator.utils.HazelcastUtils.getHazelcastAddress;
 import static com.hazelcast.simulator.utils.HazelcastUtils.isMaster;
 import static com.hazelcast.simulator.utils.HazelcastUtils.isOldestMember;
 import static com.hazelcast.simulator.utils.ReflectionUtils.invokePrivateConstructor;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyInt;
@@ -33,12 +34,16 @@ import static org.mockito.Mockito.when;
 public class HazelcastUtilsTest {
 
     private static final int DELAY_SECONDS = 1;
+    private static final InetSocketAddress SOCKET_ADDRESS = new InetSocketAddress("127.0.0.1", 5701);
 
-    private final ScheduledExecutorService executor = createScheduledThreadPool(1, HazelcastUtilsTest.class);
-    private final MessageAddress messageAddress = MessageAddress.builder().toAllAgents().toAllWorkers().toAllAgents().build();
-    private final HazelcastAwareMessage injectMessage = new HazelcastAwareMessage(messageAddress);
+    private static final ScheduledExecutorService executor = createScheduledThreadPool(1, HazelcastUtilsTest.class);
 
     private HazelcastInstance hazelcastInstance;
+
+    @AfterClass
+    public static void tearDown() throws Exception {
+        executor.shutdown();
+    }
 
     @Test
     public void testConstructor() throws Exception {
@@ -97,21 +102,65 @@ public class HazelcastUtilsTest {
     }
 
     @Test
-    public void testInjectHazelcastInstance_noInstanceFound() {
-        injectHazelcastInstance(null, injectMessage);
-        assertFalse(injectMessage.isInstanceSet());
+    public void testGetHazelcastAddress_withMemberWorker() {
+        Member member = mock(Member.class);
+        when(member.getSocketAddress()).thenReturn(SOCKET_ADDRESS);
+        hazelcastInstance = createMockHazelcastInstance(member);
+
+        String address = getHazelcastAddress(WorkerType.MEMBER, "172.16.16.1", hazelcastInstance);
+
+        assertEquals("127.0.0.1:5701", address);
     }
 
     @Test
-    public void testInjectHazelcastInstance_hazelcastServerInstance() {
-        injectHazelcastInstance(createMockHazelcastInstance(false), injectMessage);
-        assertTrue(injectMessage.isInstanceSet());
+    public void testGetHazelcastAddress_withMemberWorker_hazelcastInstanceIsNull() {
+        String address = getHazelcastAddress(WorkerType.MEMBER, "172.16.16.1", null);
+
+        assertEquals("server:172.16.16.1", address);
     }
 
     @Test
-    public void testInjectHazelcastInstance_hazelcastClientInstance() {
-        injectHazelcastInstance(createMockHazelcastInstance(false), injectMessage);
-        assertTrue(injectMessage.isInstanceSet());
+    public void testGetHazelcastAddress_withMemberWorker_oldHazelcastVersion() {
+        Member member = mock(Member.class);
+        when(member.getInetSocketAddress()).thenReturn(SOCKET_ADDRESS);
+        when(member.getSocketAddress()).thenThrow(new NoSuchMethodError("expected exception"));
+        hazelcastInstance = createMockHazelcastInstance(member);
+
+        String address = getHazelcastAddress(WorkerType.MEMBER, "172.16.16.1", hazelcastInstance);
+
+        assertEquals("127.0.0.1:5701", address);
+    }
+
+    @Test
+    public void testGetHazelcastAddress_withClientWorker() {
+        Member member = mock(Member.class);
+        when(member.getSocketAddress()).thenReturn(SOCKET_ADDRESS);
+        hazelcastInstance = createMockHazelcastInstance(member);
+
+        String address = getHazelcastAddress(WorkerType.CLIENT, "172.16.16.1", hazelcastInstance);
+
+        assertEquals("127.0.0.1:5701", address);
+    }
+
+    @Test
+    public void testGetHazelcastAddress_withClientWorker_hazelcastInstanceIsNull() {
+        String address = getHazelcastAddress(WorkerType.CLIENT, "172.16.16.1", null);
+
+        assertEquals("client:172.16.16.1", address);
+    }
+
+    @Test
+    public void testGetHazelcastAddress_withClientWorker_oldHazelcastVersion() {
+        Cluster cluster = mock(Cluster.class);
+        when(cluster.getLocalMember()).thenThrow(new UnsupportedOperationException("Client has no local member!"));
+
+        hazelcastInstance = mock(HazelcastInstance.class);
+        when(hazelcastInstance.getLocalEndpoint()).thenThrow(new NoSuchMethodError("expected exception"));
+        when(hazelcastInstance.getCluster()).thenReturn(cluster);
+
+        String address = getHazelcastAddress(WorkerType.CLIENT, "172.16.16.1", hazelcastInstance);
+
+        assertEquals("client:172.16.16.1", address);
     }
 
     private HazelcastInstance createMockHazelcastInstance(boolean returnMember) {
@@ -120,12 +169,20 @@ public class HazelcastUtilsTest {
 
     private HazelcastInstance createMockHazelcastInstance(boolean returnMember, Exception getClusterException) {
         Member member = mock(Member.class);
+        return createMockHazelcastInstance(member, returnMember, getClusterException);
+    }
 
+    private HazelcastInstance createMockHazelcastInstance(Member member) {
+        return createMockHazelcastInstance(member, true, null);
+    }
+
+    private HazelcastInstance createMockHazelcastInstance(Member member, boolean returnMember, Exception getClusterException) {
         Set<Member> memberSet = new HashSet<Member>();
         memberSet.add(member);
 
         Cluster cluster = mock(Cluster.class);
         when(cluster.getMembers()).thenReturn(memberSet);
+        when(cluster.getLocalMember()).thenReturn(returnMember ? member : null);
 
         HazelcastInstance hazelcastInstance = mock(HazelcastInstance.class);
         when(hazelcastInstance.getLocalEndpoint()).thenReturn(returnMember ? member : null);
@@ -148,23 +205,5 @@ public class HazelcastUtilsTest {
         when(executor.schedule(isA(Callable.class), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(future);
 
         return executor;
-    }
-
-    private class HazelcastAwareMessage extends Message implements HazelcastInstanceAware {
-
-        private boolean instanceSet;
-
-        private HazelcastAwareMessage(MessageAddress messageAddress) {
-            super(messageAddress);
-        }
-
-        @Override
-        public void setHazelcastInstance(HazelcastInstance hazelcastInstance) {
-            instanceSet = true;
-        }
-
-        private boolean isInstanceSet() {
-            return instanceSet;
-        }
     }
 }

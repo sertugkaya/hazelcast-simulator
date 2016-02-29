@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ public class Bash {
     }
 
     public void uploadToRemoteSimulatorDir(String ip, String src, String target) {
-        String command = format("rsync --checksum -avv -e \"ssh %s\" %s %s@%s:hazelcast-simulator-%s/%s",
+        String command = format("rsync --checksum -avv -L -e \"ssh %s\" %s %s@%s:hazelcast-simulator-%s/%s",
                 sshOptions, src, user, ip, getSimulatorVersion(), target);
         execute(command);
     }

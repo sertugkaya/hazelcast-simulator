@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ public class AtomicLongTest {
 
     // properties
     public String basename = AtomicLongTest.class.getSimpleName();
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int countersLength = 1000;
     public int warmupIterations = 100;
 
@@ -97,11 +97,12 @@ public class AtomicLongTest {
     @Verify
     public void verify() {
         String serviceName = totalCounter.getServiceName();
+        String totalName = totalCounter.getName();
 
         long actual = 0;
         for (DistributedObject distributedObject : targetInstance.getDistributedObjects()) {
             String key = distributedObject.getName();
-            if (serviceName.equals(distributedObject.getServiceName()) && key.startsWith(basename)) {
+            if (serviceName.equals(distributedObject.getServiceName()) && key.startsWith(basename) && !key.equals(totalName)) {
                 actual += targetInstance.getAtomicLong(key).get();
             }
         }

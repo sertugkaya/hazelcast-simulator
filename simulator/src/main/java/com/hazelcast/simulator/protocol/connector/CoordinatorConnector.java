@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -52,15 +53,18 @@ import static com.hazelcast.simulator.protocol.core.ResponseType.FAILURE_AGENT_N
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
 import static com.hazelcast.simulator.protocol.operation.OperationCodec.toJson;
 import static com.hazelcast.simulator.protocol.operation.OperationType.getOperationType;
+import static com.hazelcast.simulator.utils.ExecutorFactory.createFixedThreadPool;
 import static java.lang.String.format;
 import static org.junit.Assert.fail;
 
 /**
  * Connector which connects to remote Simulator Agent instances.
  */
+@SuppressWarnings("checkstyle:classdataabstractioncoupling")
 public class CoordinatorConnector implements ClientPipelineConfigurator {
 
     private static final Logger LOGGER = Logger.getLogger(CoordinatorConnector.class);
+    private static final int EXECUTOR_POOL_SIZE = Runtime.getRuntime().availableProcessors() + 1;
 
     private final EventLoopGroup group = new NioEventLoopGroup();
     private final AtomicLong messageIds = new AtomicLong();
@@ -68,12 +72,21 @@ public class CoordinatorConnector implements ClientPipelineConfigurator {
     private final LocalExceptionLogger exceptionLogger = new LocalExceptionLogger();
 
     private final CoordinatorOperationProcessor processor;
+    private final ExecutorService executorService;
 
-    public CoordinatorConnector(TestPhaseListenerContainer testPhaseListenerContainer,
+    public CoordinatorConnector(FailureContainer failureContainer, TestPhaseListenerContainer testPhaseListenerContainer,
                                 PerformanceStateContainer performanceStateContainer,
-                                TestHistogramContainer testHistogramContainer, FailureContainer failureContainer) {
-        this.processor = new CoordinatorOperationProcessor(exceptionLogger, testPhaseListenerContainer, performanceStateContainer,
-                testHistogramContainer, failureContainer);
+                                TestHistogramContainer testHistogramContainer) {
+        this(failureContainer, testPhaseListenerContainer, performanceStateContainer, testHistogramContainer,
+                createFixedThreadPool(EXECUTOR_POOL_SIZE, "CoordinatorConnector"));
+    }
+
+    CoordinatorConnector(FailureContainer failureContainer, TestPhaseListenerContainer testPhaseListenerContainer,
+                         PerformanceStateContainer performanceStateContainer, TestHistogramContainer testHistogramContainer,
+                         ExecutorService executorService) {
+        this.processor = new CoordinatorOperationProcessor(exceptionLogger, failureContainer, testPhaseListenerContainer,
+                performanceStateContainer, testHistogramContainer);
+        this.executorService = executorService;
     }
 
     @Override
@@ -84,7 +97,7 @@ public class CoordinatorConnector implements ClientPipelineConfigurator {
         pipeline.addLast("frameDecoder", new SimulatorFrameDecoder());
         pipeline.addLast("protocolDecoder", new SimulatorProtocolDecoder(COORDINATOR));
         pipeline.addLast("responseHandler", new ResponseHandler(COORDINATOR, remoteAddress, futureMap));
-        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(COORDINATOR, processor));
+        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(COORDINATOR, processor, executorService));
     }
 
     /**
@@ -102,8 +115,14 @@ public class CoordinatorConnector implements ClientPipelineConfigurator {
         }
         spawner.awaitCompletion();
 
-        processor.shutdown();
         group.shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS).syncUninterruptibly();
+
+        try {
+            executorService.shutdown();
+            executorService.awaitTermination(1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            LOGGER.error("Error during shutdown of ExecutorService", e);
+        }
     }
 
     /**

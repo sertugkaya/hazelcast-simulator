@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,10 @@ import static com.hazelcast.simulator.protocol.exception.ExceptionType.WORKER_EX
 /**
  * Connector which listens for incoming Simulator Agent connections and manages Simulator Test instances.
  */
+@SuppressWarnings("checkstyle:classdataabstractioncoupling")
 public class WorkerConnector extends AbstractServerConnector {
+
+    private static final int DEFAULT_THREAD_POOL_SIZE = 3;
 
     private final OperationProcessor processor;
 
@@ -65,7 +68,7 @@ public class WorkerConnector extends AbstractServerConnector {
     WorkerConnector(ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress, int port,
                     boolean useRemoteLogger, WorkerType type, HazelcastInstance hazelcastInstance, Worker worker,
                     ConnectionManager connectionManager) {
-        super(futureMap, localAddress, port);
+        super(futureMap, localAddress, port, DEFAULT_THREAD_POOL_SIZE);
 
         ExceptionLogger exceptionLogger = createExceptionLogger(localAddress, useRemoteLogger);
         this.processor = new WorkerOperationProcessor(exceptionLogger, type, hazelcastInstance, worker, localAddress);
@@ -86,16 +89,12 @@ public class WorkerConnector extends AbstractServerConnector {
         pipeline.addLast("messageEncoder", new MessageEncoder(localAddress, localAddress.getParent()));
         pipeline.addLast("frameDecoder", new SimulatorFrameDecoder());
         pipeline.addLast("protocolDecoder", new SimulatorProtocolDecoder(localAddress));
-        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor));
+        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor, getExecutorService()));
         pipeline.addLast("testProtocolDecoder", new SimulatorProtocolDecoder(localAddress.getChild(0)));
-        pipeline.addLast("testMessageConsumeHandler", new MessageTestConsumeHandler(testProcessorManager, localAddress));
+        pipeline.addLast("testMessageConsumeHandler", new MessageTestConsumeHandler(testProcessorManager, localAddress,
+                getExecutorService()));
         pipeline.addLast("responseHandler", new ResponseHandler(localAddress, localAddress.getParent(), futureMap, addressIndex));
         pipeline.addLast("exceptionHandler", new ExceptionHandler(serverConnector));
-    }
-
-    @Override
-    void connectorShutdown() {
-        processor.shutdown();
     }
 
     @Override
@@ -185,6 +184,15 @@ public class WorkerConnector extends AbstractServerConnector {
     public ResponseFuture submitFromTest(SimulatorAddress testAddress, SimulatorAddress destination,
                                          SimulatorOperation operation) {
         return submit(testAddress, destination, operation);
+    }
+
+    /**
+     * Returns the size of the internal message queue used by {@link #submit(SimulatorAddress, SimulatorOperation)}.
+     *
+     * @return the message queue size
+     */
+    public int getMessageQueueSize() {
+        return getMessageQueueSizeInternal();
     }
 
     public OperationProcessor getProcessor() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
 import com.hazelcast.simulator.utils.Bash;
 import com.hazelcast.simulator.utils.CommandLineExitException;
 import com.hazelcast.simulator.utils.ThreadSpawner;
+import com.hazelcast.simulator.utils.jars.HazelcastJARs;
 import com.hazelcast.util.EmptyStatement;
 import org.apache.log4j.Logger;
 import org.jclouds.compute.ComputeService;
@@ -43,7 +44,8 @@ import static com.hazelcast.simulator.common.GitInfo.getCommitIdAbbrev;
 import static com.hazelcast.simulator.provisioner.ProvisionerCli.init;
 import static com.hazelcast.simulator.provisioner.ProvisionerCli.run;
 import static com.hazelcast.simulator.provisioner.ProvisionerUtils.calcBatches;
-import static com.hazelcast.simulator.provisioner.ProvisionerUtils.ensureNotStaticCloudProvider;
+import static com.hazelcast.simulator.provisioner.ProvisionerUtils.ensureIsCloudProviderSetup;
+import static com.hazelcast.simulator.provisioner.ProvisionerUtils.ensureIsRemoteSetup;
 import static com.hazelcast.simulator.provisioner.ProvisionerUtils.getInitScriptFile;
 import static com.hazelcast.simulator.utils.CommonUtils.exitWithError;
 import static com.hazelcast.simulator.utils.CommonUtils.getElapsedSeconds;
@@ -56,7 +58,6 @@ import static com.hazelcast.simulator.utils.FileUtils.getSimulatorHome;
 import static com.hazelcast.simulator.utils.FileUtils.rename;
 import static com.hazelcast.simulator.utils.FormatUtils.HORIZONTAL_RULER;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
-import static com.hazelcast.simulator.utils.FormatUtils.secondsToHuman;
 import static com.hazelcast.simulator.utils.HarakiriMonitorUtils.getStartHarakiriMonitorCommandOrNull;
 import static com.hazelcast.simulator.utils.SimulatorUtils.loadComponentRegister;
 import static java.lang.String.format;
@@ -78,17 +79,20 @@ public class Provisioner {
     private final SimulatorProperties properties;
     private final ComputeService computeService;
     private final Bash bash;
+    private final HazelcastJARs hazelcastJARs;
 
     private final int machineWarmupSeconds;
 
     private final ComponentRegistry componentRegistry;
     private final File initScriptFile;
 
-    public Provisioner(SimulatorProperties properties, ComputeService computeService, Bash bash) {
-        this(properties, computeService, bash, MACHINE_WARMUP_WAIT_SECONDS);
+    public Provisioner(SimulatorProperties properties, ComputeService computeService, Bash bash, HazelcastJARs hazelcastJARs,
+                       boolean enterpriseEnabled) {
+        this(properties, computeService, bash, hazelcastJARs, enterpriseEnabled, MACHINE_WARMUP_WAIT_SECONDS);
     }
 
-    public Provisioner(SimulatorProperties properties, ComputeService computeService, Bash bash, int machineWarmupSeconds) {
+    public Provisioner(SimulatorProperties properties, ComputeService computeService, Bash bash, HazelcastJARs hazelcastJARs,
+                       boolean enterpriseEnabled, int machineWarmupSeconds) {
         echo("Hazelcast Simulator Provisioner");
         echo("Version: %s, Commit: %s, Build Time: %s", getSimulatorVersion(), getCommitIdAbbrev(), getBuildTime());
         echo("SIMULATOR_HOME: %s", SIMULATOR_HOME);
@@ -96,11 +100,25 @@ public class Provisioner {
         this.properties = properties;
         this.computeService = computeService;
         this.bash = bash;
+        this.hazelcastJARs = hazelcastJARs;
 
         this.machineWarmupSeconds = machineWarmupSeconds;
 
         this.componentRegistry = loadComponentRegister(agentsFile, false);
         this.initScriptFile = getInitScriptFile(SIMULATOR_HOME);
+
+        if (hazelcastJARs != null) {
+            echo("Preparing Hazelcast JARs...");
+            hazelcastJARs.prepare(enterpriseEnabled);
+        } else if (enterpriseEnabled) {
+            String hazelcastVersionSpec = properties.getHazelcastVersionSpec();
+            echoImportant("WARNING: Hazelcast Enterprise JARs will not be uploaded for %s!", hazelcastVersionSpec);
+        }
+    }
+
+    // just for testing
+    HazelcastJARs getHazelcastJARs() {
+        return hazelcastJARs;
     }
 
     // just for testing
@@ -109,7 +127,7 @@ public class Provisioner {
     }
 
     void scale(int size) {
-        ensureNotStaticCloudProvider(properties, "scale");
+        ensureIsCloudProviderSetup(properties, "scale");
 
         int agentSize = componentRegistry.agentCount();
         int delta = size - agentSize;
@@ -125,31 +143,32 @@ public class Provisioner {
     }
 
     void installSimulator() {
-        echoImportant("Installing Simulator on %s machines", componentRegistry.agentCount());
+        ensureIsRemoteSetup(properties, "install");
+
+        long started = System.nanoTime();
+        echoImportant("Installing Simulator on %d machines...", componentRegistry.agentCount());
 
         ThreadSpawner spawner = new ThreadSpawner("installSimulator", true);
         for (final AgentData agentData : componentRegistry.getAgents()) {
             spawner.spawn(new Runnable() {
                 @Override
                 public void run() {
-                    echo("Installing Simulator on " + agentData.getPublicAddress());
-                    installSimulator(agentData.getPublicAddress());
+                    echo("Installing Simulator on %s", agentData.getPublicAddress());
+                    uploadJARs(agentData.getPublicAddress());
                 }
             });
         }
         spawner.awaitCompletion();
 
-        echoImportant("Installing Simulator on %s machines", componentRegistry.agentCount());
-    }
-
-    void listMachines() {
-        echo("Provisioned machines (from " + AgentsFile.NAME + "):");
-        String machines = fileAsText(agentsFile);
-        echo(INDENTATION + machines);
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Finished installing Simulator on %d machines (%s seconds)", componentRegistry.agentCount(), elapsed);
     }
 
     void download(final String target) {
-        echoImportant("Download artifacts of %s machines", componentRegistry.agentCount());
+        ensureIsRemoteSetup(properties, "download");
+
+        long started = System.nanoTime();
+        echoImportant("Download artifacts of %s machines...", componentRegistry.agentCount());
         bash.execute("mkdir -p " + target);
 
         ThreadSpawner spawner = new ThreadSpawner("download", true);
@@ -158,16 +177,23 @@ public class Provisioner {
         final String sshOptions = properties.getSshOptions();
         final String sshUser = properties.getUser();
 
-        // download Worker logs
-        final String rsyncCommand = format(baseCommand, "", sshOptions, sshUser, target);
         final String workersPath = format("hazelcast-simulator-%s/workers/*", getSimulatorVersion());
 
+        final String rsyncCommand = format(baseCommand, "", sshOptions, sshUser, target);
+        final String rsyncCommandSuffix = format(baseCommand, "--backup --suffix=-%s ", sshOptions, sshUser, target);
+
+        final File agentOut = new File(target, "agent.out");
+        final File agentErr = new File(target, "agent.err");
+
+        // download Worker logs
         for (final AgentData agentData : componentRegistry.getAgents()) {
             spawner.spawn(new Runnable() {
                 @Override
                 public void run() {
-                    echo("Downloading Worker logs from %s", agentData.getPublicAddress());
-                    bash.executeQuiet(format(rsyncCommand, agentData.getPublicAddress(), workersPath));
+                    String ip = agentData.getPublicAddress();
+
+                    echo("Downloading Worker logs from %s", ip);
+                    bash.executeQuiet(format(rsyncCommand, ip, workersPath));
                 }
             });
         }
@@ -176,15 +202,11 @@ public class Provisioner {
         spawner.spawn(new Runnable() {
             @Override
             public void run() {
-                String rsyncCommandSuffix = format(baseCommand, "--backup --suffix=-%s ", sshOptions, sshUser, target);
-                File agentOut = new File(target, "agent.out");
-                File agentErr = new File(target, "agent.err");
-
-                for (AgentData agentData : componentRegistry.getAgents()) {
-                    String agentAddress = agentData.getAddress().toString();
+                for (final AgentData agentData : componentRegistry.getAgents()) {
                     String ip = agentData.getPublicAddress();
-                    echo("Downloading Agent logs from %s", ip);
+                    String agentAddress = agentData.getAddress().toString();
 
+                    echo("Downloading Agent logs from %s", ip);
                     bash.executeQuiet(format(rsyncCommandSuffix, ip, ip, "agent.out"));
                     bash.executeQuiet(format(rsyncCommandSuffix, ip, ip, "agent.err"));
 
@@ -195,11 +217,16 @@ public class Provisioner {
         });
 
         spawner.awaitCompletion();
-        echoImportant("Finished downloading artifacts of %s machines", componentRegistry.agentCount());
+
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Finished downloading artifacts of %s machines (%s seconds)", componentRegistry.agentCount(), elapsed);
     }
 
     void clean() {
-        echoImportant("Cleaning Worker homes of %s machines", componentRegistry.agentCount());
+        ensureIsRemoteSetup(properties, "clean");
+
+        long started = System.nanoTime();
+        echoImportant("Cleaning Worker homes of %s machines...", componentRegistry.agentCount());
         final String cleanCommand = format("rm -fr hazelcast-simulator-%s/workers/*", getSimulatorVersion());
 
         ThreadSpawner spawner = new ThreadSpawner("clean", true);
@@ -214,11 +241,15 @@ public class Provisioner {
         }
         spawner.awaitCompletion();
 
-        echoImportant("Finished cleaning Worker homes of %s machines", componentRegistry.agentCount());
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Finished cleaning Worker homes of %s machines (%s seconds)", componentRegistry.agentCount(), elapsed);
     }
 
     void killJavaProcesses() {
-        echoImportant("Killing %s Java processes", componentRegistry.agentCount());
+        ensureIsRemoteSetup(properties, "kill");
+
+        long started = System.nanoTime();
+        echoImportant("Killing %s Java processes...", componentRegistry.agentCount());
 
         ThreadSpawner spawner = new ThreadSpawner("killJavaProcesses", true);
         for (final AgentData agentData : componentRegistry.getAgents()) {
@@ -232,11 +263,12 @@ public class Provisioner {
         }
         spawner.awaitCompletion();
 
-        echoImportant("Successfully killed %s Java processes", componentRegistry.agentCount());
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Successfully killed %s Java processes (%s seconds)", componentRegistry.agentCount(), elapsed);
     }
 
     void terminate() {
-        ensureNotStaticCloudProvider(properties, "terminate");
+        ensureIsCloudProviderSetup(properties, "terminate");
 
         scaleDown(Integer.MAX_VALUE);
     }
@@ -257,6 +289,10 @@ public class Provisioner {
             computeService.getContext().close();
         }
 
+        if (hazelcastJARs != null) {
+            hazelcastJARs.shutdown();
+        }
+
         echo("Done!");
     }
 
@@ -265,24 +301,22 @@ public class Provisioner {
         echoImportant("Provisioning %s %s machines", delta, properties.getCloudProvider());
         echo("Current number of machines: " + componentRegistry.agentCount());
         echo("Desired number of machines: " + (componentRegistry.agentCount() + delta));
+
         String groupName = properties.get("GROUP_NAME", "simulator-agent");
         echo("GroupName: " + groupName);
         echo("Username: " + properties.getUser());
-
-        LOGGER.info("Using init script: " + initScriptFile.getAbsolutePath());
-
-        long started = System.nanoTime();
+        echo("Using init script: " + initScriptFile.getAbsolutePath());
 
         String jdkFlavor = properties.get("JDK_FLAVOR", "outofthebox");
         if ("outofthebox".equals(jdkFlavor)) {
-            LOGGER.info("JDK spec: outofthebox");
+            echo("JDK spec: outofthebox");
         } else {
             String jdkVersion = properties.get("JDK_VERSION", "7");
-            LOGGER.info(format("JDK spec: %s %s", jdkFlavor, jdkVersion));
+            echo("JDK spec: %s %s", jdkFlavor, jdkVersion);
         }
 
+        long started = System.nanoTime();
         Template template = new TemplateBuilder(computeService, properties).build();
-
         String startHarakiriMonitorCommand = getStartHarakiriMonitorCommandOrNull(properties);
 
         try {
@@ -314,11 +348,11 @@ public class Provisioner {
             throw new CommandLineExitException("Failed to provision machines: " + e.getMessage());
         }
 
-        echo(format("Pausing for machine warmup... (%d sec)", machineWarmupSeconds));
+        echo("Pausing for machine warmup... (%d sec)", machineWarmupSeconds);
         sleepSeconds(machineWarmupSeconds);
 
-        echo("Duration: " + secondsToHuman(getElapsedSeconds(started)));
-        echoImportant(format("Successfully provisioned %s %s machines", delta, properties.getCloudProvider()));
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Successfully provisioned %s %s machines (%s seconds)", delta, properties.getCloudProvider(), elapsed);
     }
 
     private void scaleDown(int count) {
@@ -326,7 +360,7 @@ public class Provisioner {
             count = componentRegistry.agentCount();
         }
 
-        echoImportant(format("Terminating %s %s machines (can take some time)", count, properties.getCloudProvider()));
+        echoImportant("Terminating %s %s machines (can take some time)", count, properties.getCloudProvider());
         echo("Current number of machines: " + componentRegistry.agentCount());
         echo("Desired number of machines: " + (componentRegistry.agentCount() - count));
 
@@ -342,11 +376,12 @@ public class Provisioner {
             destroyedCount += destroyedSet.size();
         }
 
-        LOGGER.info("Updating " + agentsFile.getAbsolutePath());
+        echo("Updating " + agentsFile.getAbsolutePath());
         AgentsFile.save(agentsFile, componentRegistry);
 
-        echo("Duration: " + secondsToHuman(getElapsedSeconds(started)));
-        echoImportant("Terminated %s of %s, remaining=%s", destroyedCount, count, componentRegistry.agentCount());
+        long elapsed = getElapsedSeconds(started);
+        echoImportant("Terminated %s of %s machines (%s remaining) (%s seconds)", destroyedCount, count,
+                componentRegistry.agentCount(), elapsed);
 
         if (destroyedCount != count) {
             throw new IllegalStateException("Terminated " + destroyedCount + " of " + count
@@ -359,11 +394,16 @@ public class Provisioner {
         }
     }
 
-    private void installSimulator(String ip) {
-        bash.ssh(ip, format("mkdir -p hazelcast-simulator-%s/lib/", getSimulatorVersion()));
+    private void uploadJARs(String ip) {
+        String simulatorVersion = getSimulatorVersion();
+        bash.ssh(ip, format("mkdir -p hazelcast-simulator-%s/lib/", simulatorVersion));
+        bash.ssh(ip, format("mkdir -p hazelcast-simulator-%s/user-lib/", simulatorVersion));
 
-        // first we delete the old lib files to prevent different versions of the same JAR to bite us
-        bash.sshQuiet(ip, format("rm -f hazelcast-simulator-%s/lib/*", getSimulatorVersion()));
+        // delete the old lib folder to prevent different versions of the same JAR to bite us
+        bash.sshQuiet(ip, format("rm -f hazelcast-simulator-%s/lib/*", simulatorVersion));
+
+        // delete the old user-lib folder to prevent interference with older setups
+        bash.sshQuiet(ip, format("rm -f hazelcast-simulator-%s/user-lib/*", simulatorVersion));
 
         // upload Simulator JARs
         uploadLibraryJar(ip, "simulator-*");
@@ -377,11 +417,13 @@ public class Provisioner {
         uploadLibraryJar(ip, "commons-lang3*");
         uploadLibraryJar(ip, "gson-*");
         uploadLibraryJar(ip, "guava-*");
+        uploadLibraryJar(ip, "javassist-*");
         uploadLibraryJar(ip, "jopt*");
         uploadLibraryJar(ip, "junit*");
         uploadLibraryJar(ip, "HdrHistogram-*");
         uploadLibraryJar(ip, "log4j*");
         uploadLibraryJar(ip, "netty-*");
+        uploadLibraryJar(ip, "slf4j-log4j12-*");
 
         // upload remaining files
         bash.uploadToRemoteSimulatorDir(ip, SIMULATOR_HOME + "/bin/", "bin");
@@ -391,7 +433,13 @@ public class Provisioner {
         bash.uploadToRemoteSimulatorDir(ip, SIMULATOR_HOME + "/user-lib/", "user-lib/");
 
         // purge Hazelcast JARs
-        bash.sshQuiet(ip, format("rm -rf hazelcast-simulator-%s/hz-lib", getSimulatorVersion()));
+        bash.sshQuiet(ip, format("rm -rf hazelcast-simulator-%s/hz-lib", simulatorVersion));
+
+        // upload Hazelcast JARs if configured
+        if (hazelcastJARs != null) {
+            echo("Uploading Hazelcast JARs on %s", ip);
+            hazelcastJARs.upload(ip, SIMULATOR_HOME);
+        }
 
         String initScript = loadInitScript();
         bash.ssh(ip, initScript);
@@ -442,7 +490,7 @@ public class Provisioner {
             }
 
             echo(INDENTATION + ip + " SIMULATOR INSTALLATION STARTED...");
-            installSimulator(ip);
+            uploadJARs(ip);
             echo(INDENTATION + ip + " SIMULATOR INSTALLED");
 
             if (startHarakiriMonitorCommand != null) {

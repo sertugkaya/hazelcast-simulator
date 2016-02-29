@@ -1,32 +1,39 @@
 package com.hazelcast.simulator.protocol.processors;
 
+import com.hazelcast.simulator.agent.workerjvm.WorkerJvmSettings;
 import com.hazelcast.simulator.protocol.connector.WorkerConnector;
 import com.hazelcast.simulator.protocol.core.AddressLevel;
 import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
+import com.hazelcast.simulator.protocol.operation.CreateWorkerOperation;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import com.hazelcast.simulator.protocol.operation.StartTestOperation;
 import com.hazelcast.simulator.protocol.operation.StartTestPhaseOperation;
 import com.hazelcast.simulator.protocol.operation.StopTestOperation;
+import com.hazelcast.simulator.protocol.registry.TargetType;
 import com.hazelcast.simulator.test.TestCase;
+import com.hazelcast.simulator.test.TestContainer;
+import com.hazelcast.simulator.test.TestContextImpl;
 import com.hazelcast.simulator.test.TestException;
 import com.hazelcast.simulator.test.TestPhase;
 import com.hazelcast.simulator.tests.FailingTest;
 import com.hazelcast.simulator.tests.SuccessTest;
-import com.hazelcast.simulator.worker.TestContainer;
-import com.hazelcast.simulator.worker.TestContextImpl;
 import com.hazelcast.simulator.worker.Worker;
-import com.hazelcast.simulator.worker.WorkerType;
 import org.junit.Test;
+
+import java.util.Collections;
+import java.util.List;
 
 import static com.hazelcast.simulator.protocol.core.ResponseType.EXCEPTION_DURING_OPERATION_EXECUTION;
 import static com.hazelcast.simulator.protocol.core.ResponseType.SUCCESS;
 import static com.hazelcast.simulator.protocol.core.ResponseType.UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR;
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
 import static com.hazelcast.simulator.protocol.operation.OperationType.getOperationType;
+import static com.hazelcast.simulator.test.TestContext.LOCALHOST;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
-import static com.hazelcast.simulator.utils.PropertyBindingSupport.bindProperties;
+import static com.hazelcast.simulator.worker.WorkerType.MEMBER;
+import static java.util.Collections.singletonList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
@@ -42,13 +49,24 @@ public class TestOperationProcessorTest {
     private TestOperationProcessor processor;
 
     @Test
-    public void testProcessOperation_UnsupportedOperation() throws Exception {
+    public void testProcessOperation_unsupportedOperation() throws Exception {
         createTestOperationProcessor();
 
-        SimulatorOperation operation = new IntegrationTestOperation(IntegrationTestOperation.TEST_DATA);
+        SimulatorOperation operation = new CreateWorkerOperation(Collections.<WorkerJvmSettings>emptyList());
         ResponseType responseType = processor.processOperation(getOperationType(operation), operation, COORDINATOR);
 
         assertEquals(UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR, responseType);
+    }
+
+    @Test
+    public void process_IntegrationTestOperation_unsupportedOperation() throws Exception {
+        createTestOperationProcessor();
+
+        SimulatorOperation operation = new IntegrationTestOperation();
+        ResponseType responseType = processor.processOperation(getOperationType(operation), operation, COORDINATOR);
+
+        assertEquals(UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR, responseType);
+        exceptionLogger.assertNoException();
     }
 
     @Test
@@ -83,10 +101,24 @@ public class TestOperationProcessorTest {
     }
 
     @Test
-    public void process_StartTest_passiveMember() {
+    public void process_StartTest_skipRunPhase_targetTypeMismatch() {
         createTestOperationProcessor();
 
-        StartTestOperation operation = new StartTestOperation(true);
+        StartTestOperation operation = new StartTestOperation(TargetType.CLIENT);
+        ResponseType responseType = processor.process(operation, COORDINATOR);
+        assertEquals(SUCCESS, responseType);
+
+        waitForPhaseCompletion(TestPhase.RUN);
+
+        exceptionLogger.assertNoException();
+    }
+
+    @Test
+    public void process_StartTest_skipRunPhase_notOnTargetWorkersList() {
+        createTestOperationProcessor();
+
+        List<String> targetWorkers = singletonList(new SimulatorAddress(AddressLevel.WORKER, 1, 2, 0).toString());
+        StartTestOperation operation = new StartTestOperation(TargetType.ALL, targetWorkers);
         ResponseType responseType = processor.process(operation, COORDINATOR);
         assertEquals(SUCCESS, responseType);
 
@@ -125,10 +157,8 @@ public class TestOperationProcessorTest {
         runPhase(TestPhase.LOCAL_TEARDOWN);
 
         exceptionLogger.assertNoException();
-
         verify(workerConnector).removeTest(1);
     }
-
 
     private void runPhase(TestPhase testPhase) {
         runPhase(testPhase, SUCCESS);
@@ -144,7 +174,7 @@ public class TestOperationProcessorTest {
     }
 
     private void runTest() {
-        StartTestOperation operation = new StartTestOperation(false);
+        StartTestOperation operation = new StartTestOperation();
         processor.process(operation, COORDINATOR);
 
         waitForPhaseCompletion(TestPhase.RUN);
@@ -182,15 +212,12 @@ public class TestOperationProcessorTest {
             TestCase testCase = new TestCase(testId);
             testCase.setProperty("class", testClass.getName());
 
-            Object testInstance = getClass().getClassLoader().loadClass(testCase.getClassname()).newInstance();
-            bindProperties(testInstance, testCase, TestContainer.OPTIONAL_TEST_PROPERTIES);
-            TestContextImpl testContext = new TestContextImpl(testId, null);
-            TestContainer testContainer = new TestContainer(testInstance, testContext, testCase);
+            TestContextImpl testContext = new TestContextImpl(null, testId, LOCALHOST);
+            TestContainer testContainer = new TestContainer(testContext, testCase);
             SimulatorAddress testAddress = new SimulatorAddress(AddressLevel.TEST, 1, 1, 1);
 
             TestOperationProcessor.resetPendingTests();
-            processor = new TestOperationProcessor(exceptionLogger, worker, WorkerType.MEMBER, 1, testId, testContainer,
-                    testAddress);
+            processor = new TestOperationProcessor(exceptionLogger, worker, MEMBER, testContainer, testAddress);
         } catch (Exception e) {
             e.printStackTrace();
             fail(e.getMessage());

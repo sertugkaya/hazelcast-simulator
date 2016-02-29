@@ -30,7 +30,6 @@ import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.eq;
@@ -43,6 +42,7 @@ import static org.mockito.Mockito.when;
 
 public class WorkerJvmFailureMonitorTest {
 
+    private static final int DEFAULT_LAST_SEEN_TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_CHECK_INTERVAL = 30;
     private static final int DEFAULT_SLEEP_TIME = 100;
 
@@ -62,6 +62,7 @@ public class WorkerJvmFailureMonitorTest {
     @Before
     public void setUp() {
         response = mock(Response.class);
+        when(response.getFirstErrorResponseType()).thenReturn(SUCCESS);
 
         agentConnector = mock(AgentConnector.class);
         when(agentConnector.write(any(SimulatorAddress.class), any(SimulatorOperation.class))).thenReturn(response);
@@ -76,7 +77,8 @@ public class WorkerJvmFailureMonitorTest {
 
         workerHome = workerJvm.getWorkerHome();
 
-        workerJvmFailureMonitor = new WorkerJvmFailureMonitor(agent, workerJvmManager, DEFAULT_CHECK_INTERVAL);
+        workerJvmFailureMonitor = new WorkerJvmFailureMonitor(agent, workerJvmManager, DEFAULT_LAST_SEEN_TIMEOUT_SECONDS,
+                DEFAULT_CHECK_INTERVAL);
     }
 
     @After
@@ -86,11 +88,13 @@ public class WorkerJvmFailureMonitorTest {
         for (WorkerJvm workerJvm : workerJvmManager.getWorkerJVMs()) {
             deleteQuiet(workerJvm.getWorkerHome());
         }
+        deleteQuiet("worker3");
+        deleteQuiet("1.exception.sendFailure");
     }
 
     @Test
     public void testConstructor() {
-        workerJvmFailureMonitor = new WorkerJvmFailureMonitor(agent, workerJvmManager);
+        workerJvmFailureMonitor = new WorkerJvmFailureMonitor(agent, workerJvmManager, DEFAULT_LAST_SEEN_TIMEOUT_SECONDS);
     }
 
     @Test
@@ -116,7 +120,9 @@ public class WorkerJvmFailureMonitorTest {
 
     @Test
     public void testRun_shouldContinueAfterErrorResponse() {
-        when(response.getFirstErrorResponseType()).thenReturn(FAILURE_COORDINATOR_NOT_FOUND).thenReturn(SUCCESS);
+        Response failOnceResponse = mock(Response.class);
+        when(failOnceResponse.getFirstErrorResponseType()).thenReturn(FAILURE_COORDINATOR_NOT_FOUND).thenReturn(SUCCESS);
+        when(agentConnector.write(eq(COORDINATOR), any(FailureOperation.class))).thenReturn(failOnceResponse);
 
         workerJvmFailureMonitor.startTimeoutDetection();
         workerJvm.setLastSeen(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1));
@@ -177,8 +183,42 @@ public class WorkerJvmFailureMonitorTest {
     }
 
     @Test
+    public void testRun_shouldDetectException_shouldRenameFileIfFailureOperationCouldNotBeSent_withErrorResponse() {
+        Response failOnceResponse = mock(Response.class);
+        when(failOnceResponse.getFirstErrorResponseType()).thenReturn(FAILURE_COORDINATOR_NOT_FOUND).thenReturn(SUCCESS);
+        when(agentConnector.write(eq(COORDINATOR), any(FailureOperation.class))).thenReturn(failOnceResponse);
+
+        String cause = throwableToString(new RuntimeException());
+        File exceptionFile = createExceptionFile(workerHome, "WorkerJvmFailureMonitorTest", cause);
+
+        sleepMillis(DEFAULT_SLEEP_TIME);
+
+        assertThatFailureOperationHasBeenSent(agentConnector, 1);
+        verifyNoMoreInteractions(agentConnector);
+        assertThatExceptionFileDoesNotExist(exceptionFile);
+        assertThatRenamedExceptionFileExists(exceptionFile);
+    }
+
+    @Test
+    public void testRun_shouldDetectException_shouldRenameFileIfFailureOperationCouldNotBeSent_withException() {
+        when(agentConnector.write(eq(COORDINATOR), any(FailureOperation.class)))
+                .thenThrow(new SimulatorProtocolException("expected exception"))
+                .thenReturn(response);
+
+        String cause = throwableToString(new RuntimeException());
+        File exceptionFile = createExceptionFile(workerHome, "WorkerJvmFailureMonitorTest", cause);
+
+        sleepMillis(DEFAULT_SLEEP_TIME);
+
+        assertThatFailureOperationHasBeenSent(agentConnector, 1);
+        verifyNoMoreInteractions(agentConnector);
+        assertThatExceptionFileDoesNotExist(exceptionFile);
+        assertThatRenamedExceptionFileExists(exceptionFile);
+    }
+
+    @Test
     public void testRun_shouldDetectOomeFailure_withOomeFile() {
-        createFile(workerHome, "worker.oome");
+        ensureExistingFile(workerHome, "worker.oome");
 
         sleepMillis(DEFAULT_SLEEP_TIME);
 
@@ -189,7 +229,7 @@ public class WorkerJvmFailureMonitorTest {
 
     @Test
     public void testRun_shouldDetectOomeFailure_withHprofFile() {
-        createFile(workerHome, "java_pid3140.hprof");
+        ensureExistingFile(workerHome, "java_pid3140.hprof");
 
         sleepMillis(DEFAULT_SLEEP_TIME);
 
@@ -209,7 +249,15 @@ public class WorkerJvmFailureMonitorTest {
     }
 
     @Test
-    public void testRun_shouldNotDetectInactivityIfDetectionNotStarted() {
+    public void testRun_shouldNotDetectInactivity_ifDetectionDisabled() {
+        workerJvmFailureMonitor = new WorkerJvmFailureMonitor(agent, workerJvmManager, -1, DEFAULT_CHECK_INTERVAL);
+
+        workerJvmFailureMonitor.startTimeoutDetection();
+        workerJvm.setLastSeen(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1));
+
+        sleepMillis(DEFAULT_SLEEP_TIME);
+
+        workerJvmFailureMonitor.stopTimeoutDetection();
         workerJvm.setLastSeen(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1));
 
         sleepMillis(DEFAULT_SLEEP_TIME);
@@ -218,7 +266,16 @@ public class WorkerJvmFailureMonitorTest {
     }
 
     @Test
-    public void testRun_shouldNotDetectInactivityAfterDetectionIsStopped() {
+    public void testRun_shouldNotDetectInactivity_ifDetectionNotStarted() {
+        workerJvm.setLastSeen(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1));
+
+        sleepMillis(DEFAULT_SLEEP_TIME);
+
+        verifyNoMoreInteractions(agentConnector);
+    }
+
+    @Test
+    public void testRun_shouldNotDetectInactivity_afterDetectionIsStopped() {
         workerJvmFailureMonitor.startTimeoutDetection();
 
         sleepMillis(DEFAULT_SLEEP_TIME);
@@ -303,20 +360,13 @@ public class WorkerJvmFailureMonitorTest {
     private static File createExceptionFile(File workerHome, String testId, String cause) {
         String targetFileName = "1.exception";
 
-        File tmpFile = createFile(workerHome, targetFileName + "tmp");
+        File tmpFile = ensureExistingFile(workerHome, targetFileName + "tmp");
         File exceptionFile = new File(workerHome, targetFileName);
 
         appendText(testId + NEW_LINE + cause, tmpFile);
         rename(tmpFile, exceptionFile);
 
         return exceptionFile;
-    }
-
-    private static File createFile(File workerHome, String fileName) {
-        File file = new File(workerHome, fileName);
-        ensureExistingFile(file);
-
-        return file;
     }
 
     private static void assertThatFailureOperationHasBeenSent(AgentConnector agentConnector, int times) {
@@ -340,8 +390,11 @@ public class WorkerJvmFailureMonitorTest {
     }
 
     private static void assertThatExceptionFileDoesNotExist(File firstExceptionFile) {
-        if (firstExceptionFile.exists()) {
-            fail("Exception file should be deleted: " + firstExceptionFile);
-        }
+        assertFalse("Exception file should be deleted: " + firstExceptionFile, firstExceptionFile.exists());
+    }
+
+    private static void assertThatRenamedExceptionFileExists(File exceptionFile) {
+        File expectedFile = new File(exceptionFile.getName() + ".sendFailure");
+        assertTrue("Exception file should be renamed: " + expectedFile.getName(), expectedFile.exists());
     }
 }

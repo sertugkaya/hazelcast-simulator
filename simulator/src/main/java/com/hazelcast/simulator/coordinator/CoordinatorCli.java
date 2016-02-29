@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import com.hazelcast.simulator.cluster.WorkerConfigurationConverter;
 import com.hazelcast.simulator.common.AgentsFile;
 import com.hazelcast.simulator.common.SimulatorProperties;
 import com.hazelcast.simulator.protocol.registry.ComponentRegistry;
+import com.hazelcast.simulator.protocol.registry.TargetType;
 import com.hazelcast.simulator.test.FailureType;
 import com.hazelcast.simulator.test.TestPhase;
 import com.hazelcast.simulator.test.TestSuite;
@@ -40,6 +41,7 @@ import static com.hazelcast.simulator.coordinator.WorkerParameters.initMemberHzC
 import static com.hazelcast.simulator.test.FailureType.fromPropertyValue;
 import static com.hazelcast.simulator.test.TestSuite.loadTestSuite;
 import static com.hazelcast.simulator.utils.CliUtils.initOptionsWithHelp;
+import static com.hazelcast.simulator.utils.CloudProviderUtils.isLocal;
 import static com.hazelcast.simulator.utils.CommonUtils.getSimulatorVersion;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
 import static com.hazelcast.simulator.utils.FileUtils.getFile;
@@ -77,15 +79,25 @@ final class CoordinatorCli {
             "Number of cluster client Worker JVMs.")
             .withRequiredArg().ofType(Integer.class).defaultsTo(0);
 
-    private final OptionSpec<Boolean> autoCreateHzInstanceSpec = parser.accepts("autoCreateHzInstances",
-            "Auto create Hazelcast instances.")
-            .withRequiredArg().ofType(Boolean.class).defaultsTo(true);
-
     private final OptionSpec<Integer> dedicatedMemberMachinesSpec = parser.accepts("dedicatedMemberMachines",
             "Controls the number of dedicated member machines. For example when there are 4 machines,"
                     + " 2 members and 9 clients with 1 dedicated member machine defined, then"
                     + " 1 machine gets the 2 members and the 3 remaining machines get 3 clients each.")
             .withRequiredArg().ofType(Integer.class).defaultsTo(0);
+
+    private final OptionSpec<TargetType> targetTypeSpec = parser.accepts("targetType",
+            format("Defines the type of Workers which execute the RUN phase."
+                    + " The type PREFER_CLIENT selects client Workers if they are available, member Workers otherwise."
+                    + " List of allowed types: %s", TargetType.getIdsAsString()))
+            .withRequiredArg().ofType(TargetType.class).defaultsTo(TargetType.PREFER_CLIENT);
+
+    private final OptionSpec<Integer> targetCountSpec = parser.accepts("targetCount",
+            "Defines the number of Workers which execute the RUN phase. The value 0 selects all Workers.")
+            .withRequiredArg().ofType(Integer.class).defaultsTo(0);
+
+    private final OptionSpec<Boolean> autoCreateHzInstanceSpec = parser.accepts("autoCreateHzInstances",
+            "Auto create Hazelcast instances.")
+            .withRequiredArg().ofType(Boolean.class).defaultsTo(true);
 
     private final OptionSpec<String> workerClassPathSpec = parser.accepts("workerClassPath",
             "A file/directory containing the classes/jars/resources that are going to be uploaded to the agents."
@@ -103,7 +115,7 @@ final class CoordinatorCli {
             "Defines if tests are verified.")
             .withRequiredArg().ofType(Boolean.class).defaultsTo(true);
 
-    private final OptionSpec<Boolean> workerRefreshSpec = parser.accepts("workerFresh",
+    private final OptionSpec<Boolean> workerRefreshSpec = parser.accepts("workerRefresh",
             "Defines if the Worker JVMs should be restarted after every test (in serial execution).")
             .withRequiredArg().ofType(Boolean.class).defaultsTo(false);
 
@@ -112,7 +124,7 @@ final class CoordinatorCli {
             .withRequiredArg().ofType(Boolean.class).defaultsTo(true);
 
     private final OptionSpec<String> tolerableFailureSpec = parser.accepts("tolerableFailure",
-            String.format("Defines if tests should not fail when given failure is detected. List of known failures: %s",
+            format("Defines if tests should not fail when given failure is detected. List of known failures: %s",
                     FailureType.getIdsAsString()))
             .withRequiredArg().ofType(String.class).defaultsTo("workerTimeout");
 
@@ -120,7 +132,9 @@ final class CoordinatorCli {
             "If defined tests are run in parallel.");
 
     private final OptionSpec<TestPhase> syncToTestPhaseSpec = parser.accepts("syncToTestPhase",
-            "Defines the last TestPhase which is synchronized between all parallel running tests.")
+            format("Defines the last TestPhase which is synchronized between all parallel running tests."
+                    + " Use --syncToTestPhase %s to synchronize all test phases."
+                    + " List of defined test phases: %s", TestPhase.getLastTestPhase(), TestPhase.getIdsAsString()))
             .withRequiredArg().ofType(TestPhase.class).defaultsTo(TestPhase.SETUP);
 
     private final OptionSpec<String> workerVmOptionsSpec = parser.accepts("workerVmOptions",
@@ -201,13 +215,12 @@ final class CoordinatorCli {
 
         TestSuite testSuite = getTestSuite(cli, options);
 
-        ComponentRegistry componentRegistry = loadComponentRegister(getAgentsFile(cli, options));
-        componentRegistry.addTests(testSuite);
-
         SimulatorProperties simulatorProperties = loadSimulatorProperties(options, cli.propertiesFileSpec);
         if (options.has(cli.gitSpec)) {
             simulatorProperties.forceGit(options.valueOf(cli.gitSpec));
         }
+
+        ComponentRegistry componentRegistry = getComponentRegistry(cli, options, testSuite, simulatorProperties);
 
         CoordinatorParameters coordinatorParameters = new CoordinatorParameters(
                 simulatorProperties,
@@ -217,6 +230,8 @@ final class CoordinatorCli {
                 options.valueOf(cli.verifyEnabledSpec),
                 options.has(cli.parallelSpec),
                 options.valueOf(cli.workerRefreshSpec),
+                options.valueOf(cli.targetTypeSpec),
+                options.valueOf(cli.targetCountSpec),
                 options.valueOf(cli.syncToTestPhaseSpec)
         );
 
@@ -266,6 +281,19 @@ final class CoordinatorCli {
             throw new CommandLineExitException("You need to define --duration or --waitForTestCase or both!");
         }
         return testSuite;
+    }
+
+    private static ComponentRegistry getComponentRegistry(CoordinatorCli cli, OptionSet options, TestSuite testSuite,
+                                                          SimulatorProperties simulatorProperties) {
+        ComponentRegistry componentRegistry;
+        if (isLocal(simulatorProperties)) {
+            componentRegistry = new ComponentRegistry();
+            componentRegistry.addAgent("localhost", "localhost");
+        } else {
+            componentRegistry = loadComponentRegister(getAgentsFile(cli, options));
+        }
+        componentRegistry.addTests(testSuite);
+        return componentRegistry;
     }
 
     private static File getTestSuiteFile(OptionSet options) {

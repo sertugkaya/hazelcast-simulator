@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,11 +41,11 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
+import static com.hazelcast.simulator.utils.UuidUtil.newSecureUuidString;
 import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 
@@ -56,9 +56,8 @@ public class ReliableTopicTest {
     // properties
     public String basename = ReliableTopicTest.class.getSimpleName();
     public int topicCount = 10;
-    public int threadCount = 3;
     public int listenersPerTopic = 2;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
 
     private AtomicLong failures = new AtomicLong();
     private IAtomicLong totalMessagesSend;
@@ -116,7 +115,7 @@ public class ReliableTopicTest {
         private long messagesSend = 0;
 
         private final Map<ITopic, AtomicLong> counterMap = new HashMap<ITopic, AtomicLong>();
-        private final String id = UUID.randomUUID().toString();
+        private final String id = newSecureUuidString();
 
         public Worker() {
             for (ITopic topic : topics) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,10 +52,23 @@ public class ProbeImpl implements Probe {
     @Override
     public void done() {
         long now = System.nanoTime();
+
         Long started = threadLocalStarted.get();
         if (started == null) {
             throw new IllegalStateException("You have to call started() before done()");
         }
+
+        recordValue(now - started);
+    }
+
+    @Override
+    public void done(long started) {
+        long now = System.nanoTime();
+
+        if (started <= 0) {
+            throw new IllegalArgumentException("started has to be a positive number");
+        }
+
         recordValue(now - started);
     }
 

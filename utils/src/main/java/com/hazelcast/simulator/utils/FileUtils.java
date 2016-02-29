@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +30,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.URL;
@@ -44,7 +42,7 @@ import java.util.regex.Pattern;
 import static com.hazelcast.simulator.utils.CommonUtils.closeQuietly;
 import static java.lang.String.format;
 
-@SuppressFBWarnings({"DM_DEFAULT_ENCODING"})
+@SuppressFBWarnings("DM_DEFAULT_ENCODING")
 public final class FileUtils {
 
     public static final String USER_HOME = System.getProperty("user.home");
@@ -87,43 +85,6 @@ public final class FileUtils {
             file = new File(file, items[i]);
         }
         return file;
-    }
-
-    public static void writeObject(Object o, File file) {
-        File tmpFile = new File(file.getParent(), file.getName() + ".tmp");
-
-        FileOutputStream stream = null;
-        ObjectOutputStream outputStream = null;
-        try {
-            stream = new FileOutputStream(tmpFile);
-            outputStream = new ObjectOutputStream(stream);
-            outputStream.writeObject(o);
-        } catch (IOException e) {
-            throw new FileUtilsException(e);
-        } finally {
-            closeQuietly(outputStream);
-            closeQuietly(stream);
-        }
-
-        rename(tmpFile, file);
-    }
-
-    @SuppressWarnings("unchecked")
-    public static <E> E readObject(File file) {
-        FileInputStream stream = null;
-        ObjectInputStream inputStream = null;
-        try {
-            stream = new FileInputStream(file);
-            inputStream = new ObjectInputStream(stream);
-            return (E) inputStream.readObject();
-        } catch (IOException e) {
-            throw new FileUtilsException(e);
-        } catch (ClassNotFoundException e) {
-            throw new FileUtilsException(e);
-        } finally {
-            closeQuietly(inputStream);
-            closeQuietly(stream);
-        }
     }
 
     public static void writeText(String text, File file) {
@@ -238,7 +199,14 @@ public final class FileUtils {
         }
     }
 
+    public static void deleteQuiet(String fileName) {
+        deleteQuiet(new File(fileName));
+    }
+
     public static void deleteQuiet(File file) {
+        if (file == null) {
+            return;
+        }
         try {
             delete(file);
         } catch (Exception ignored) {
@@ -266,6 +234,18 @@ public final class FileUtils {
         }
     }
 
+    public static File ensureExistingFile(String fileName) {
+        File file = new File(fileName);
+        ensureExistingFile(file);
+        return file;
+    }
+
+    public static File ensureExistingFile(File parent, String fileName) {
+        File file = new File(parent, fileName);
+        ensureExistingFile(file);
+        return file;
+    }
+
     public static void ensureExistingFile(File file) {
         if (file.isFile()) {
             return;
@@ -284,6 +264,18 @@ public final class FileUtils {
                 throw new FileUtilsException(e);
             }
         }
+    }
+
+    public static File ensureExistingDirectory(String dirName) {
+        File dir = new File(dirName);
+        ensureExistingDirectory(dir);
+        return dir;
+    }
+
+    public static File ensureExistingDirectory(File parent, String dirName) {
+        File dir = new File(parent, dirName);
+        ensureExistingDirectory(dir);
+        return dir;
     }
 
     public static void ensureExistingDirectory(File dir) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ package com.hazelcast.simulator.tests.map.domain;
 
 abstract class AbstractDomainObject implements DomainObject {
 
-    protected String key;
-    protected String stringVal;
-    protected double doubleVal;
-    protected long longVal;
-    protected int intVal;
+    String key;
+    String stringVal;
+    double doubleVal;
+    long longVal;
+    int intVal;
 
     @Override
     public String getKey() {

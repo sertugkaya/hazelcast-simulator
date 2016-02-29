@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import static com.hazelcast.simulator.utils.CommonUtils.closeQuietly;
 import static com.hazelcast.simulator.utils.CommonUtils.exitWithError;
 import static com.hazelcast.simulator.utils.CommonUtils.rethrow;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
+import static java.lang.String.format;
 
 public final class NativeUtils {
 
@@ -55,7 +56,7 @@ public final class NativeUtils {
             int shellExitStatus = shell.waitFor();
 
             if (shellExitStatus != 0) {
-                LOGGER.error(String.format("Failed to execute [%s]", command));
+                LOGGER.error(format("Failed to execute [%s]", command));
                 LOGGER.error(sb.toString());
                 exitWithError();
             } else {
@@ -135,7 +136,7 @@ public final class NativeUtils {
         private final BufferedReader reader;
         private final StringBuilder stringBuilder;
 
-        @SuppressFBWarnings({"DM_DEFAULT_ENCODING"})
+        @SuppressFBWarnings("DM_DEFAULT_ENCODING")
         public BashStreamGobbler(InputStream in, StringBuilder stringBuilder) {
             this.inputStreamReader = new InputStreamReader(in);
             this.reader = new BufferedReader(inputStreamReader);

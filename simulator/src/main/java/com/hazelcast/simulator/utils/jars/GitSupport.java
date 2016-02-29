@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ class GitSupport {
     }
 
     File[] checkout(String revision) {
-        File srcDirectory = getOrCreateSourceDirectory();
+        File srcDirectory = ensureExistingDirectory(baseDir, "src");
         String fullSha1 = fetchSources(srcDirectory, revision);
 
         File buildCache = getCacheDirectory(fullSha1);
@@ -202,18 +202,11 @@ class GitSupport {
         return newFile(baseDir, "build-cache", fullSha1);
     }
 
-    private File getOrCreateSourceDirectory() {
-        File src = newFile(baseDir, "src");
-        ensureExistingDirectory(src);
-        return src;
-    }
-
     private void fetchAllRepositories(Git git) throws GitAPIException {
         Repository repository = git.getRepository();
         Set<String> remotes = repository.getRemoteNames();
         for (String remoteRepository : remotes) {
             git.fetch().setRemote(remoteRepository).call();
-
         }
     }
 

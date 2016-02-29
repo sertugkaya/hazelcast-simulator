@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 package com.hazelcast.simulator.protocol.operation;
 
 /**
- * Stops the {@link com.hazelcast.simulator.test.TestPhase#RUN} of a Simulator test.
+ * Stops the {@link com.hazelcast.simulator.test.TestPhase#RUN} phase of a Simulator Test.
  */
 public class StopTestOperation implements SimulatorOperation {
 }

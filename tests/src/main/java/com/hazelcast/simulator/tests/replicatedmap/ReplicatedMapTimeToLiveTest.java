@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Verify;
 import com.hazelcast.simulator.tests.map.helpers.MapOperationCounter;
 import com.hazelcast.simulator.utils.AssertTask;
+import com.hazelcast.simulator.worker.metronome.Metronome;
+import com.hazelcast.simulator.worker.metronome.MetronomeType;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
 import com.hazelcast.simulator.worker.tasks.AbstractWorker;
 import com.hazelcast.spi.exception.DistributedObjectDestroyedException;
@@ -35,6 +37,7 @@ import com.hazelcast.util.EmptyStatement;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.simulator.utils.TestUtils.assertTrueEventually;
+import static com.hazelcast.simulator.worker.metronome.MetronomeFactory.withFixedIntervalMs;
 import static org.junit.Assert.assertEquals;
 
 public class ReplicatedMapTimeToLiveTest {
@@ -52,6 +55,8 @@ public class ReplicatedMapTimeToLiveTest {
 
     public double putTTLProb = 0.7;
     public double getProb = 0.3;
+    public MetronomeType metronomeType = MetronomeType.SLEEPING;
+    public int intervalMs = 20;
 
     public int minTTLExpiryMs = 1;
     public int maxTTLExpiryMs = 1000;
@@ -96,6 +101,8 @@ public class ReplicatedMapTimeToLiveTest {
 
     private class Worker extends AbstractWorker<Operation> {
         private final MapOperationCounter count = new MapOperationCounter();
+        private final Metronome metronome = withFixedIntervalMs(intervalMs, metronomeType);
+
 
         public Worker() {
             super(builder);
@@ -103,6 +110,7 @@ public class ReplicatedMapTimeToLiveTest {
 
         @Override
         protected void timeStep(Operation operation) throws Exception {
+            metronome.waitForNext();
             try {
                 int key = randomInt(keyCount);
 

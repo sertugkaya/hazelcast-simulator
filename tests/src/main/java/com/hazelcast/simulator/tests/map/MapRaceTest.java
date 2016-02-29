@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ import com.hazelcast.simulator.worker.tasks.AbstractMonotonicWorker;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
+import static com.hazelcast.simulator.utils.UuidUtil.newSecureUuidString;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -40,7 +40,6 @@ import static org.junit.Assert.assertEquals;
 public class MapRaceTest {
 
     // properties
-    public int threadCount = 10;
     public String basename = MapRaceTest.class.getSimpleName();
     public int keyCount = 1000;
 
@@ -114,7 +113,7 @@ public class MapRaceTest {
 
         @Override
         protected void afterRun() {
-            resultMap.put(UUID.randomUUID().toString(), result);
+            resultMap.put(newSecureUuidString(), result);
         }
 
         private void incrementMap(Map<Integer, Long> map, Integer key, long increment) {

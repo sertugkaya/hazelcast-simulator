@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
  */
 package com.hazelcast.simulator.worker.tasks;
 
-import static com.hazelcast.simulator.utils.CommonUtils.rethrow;
-
 /**
  * Monotonic version of {@link AbstractWorker}.
  *
@@ -26,22 +24,12 @@ import static com.hazelcast.simulator.utils.CommonUtils.rethrow;
 public abstract class AbstractMonotonicWorker extends AbstractWorker {
 
     @Override
-    public final void run() {
-        beforeRun();
+    public final void doRun() throws Exception {
+        long started = System.nanoTime();
+        timeStep();
+        getWorkerProbe().recordValue(System.nanoTime() - started);
 
-        while (!testContext.isStopped() && !isWorkerStopped) {
-            long started = System.nanoTime();
-            try {
-                timeStep();
-            } catch (Exception e) {
-                throw rethrow(e);
-            }
-            workerProbe.recordValue(System.nanoTime() - started);
-
-            increaseIteration();
-        }
-
-        afterRun();
+        increaseIteration();
     }
 
     /**

@@ -1,14 +1,18 @@
 package com.hazelcast.simulator.protocol.processors;
 
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.simulator.agent.workerjvm.WorkerJvmSettings;
 import com.hazelcast.simulator.protocol.connector.WorkerConnector;
 import com.hazelcast.simulator.protocol.core.AddressLevel;
 import com.hazelcast.simulator.protocol.core.ResponseType;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.operation.CreateTestOperation;
+import com.hazelcast.simulator.protocol.operation.CreateWorkerOperation;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
+import com.hazelcast.simulator.protocol.operation.PingOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import com.hazelcast.simulator.protocol.operation.TerminateWorkerOperation;
+import com.hazelcast.simulator.test.IllegalTestException;
 import com.hazelcast.simulator.test.TestCase;
 import com.hazelcast.simulator.tests.SuccessTest;
 import com.hazelcast.simulator.worker.Worker;
@@ -17,6 +21,7 @@ import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,6 +50,7 @@ public class WorkerOperationProcessorTest {
     private final TestExceptionLogger exceptionLogger = new TestExceptionLogger();
     private final HazelcastInstance hazelcastInstance = mock(HazelcastInstance.class);
     private final Worker worker = mock(Worker.class);
+    private final SimulatorAddress workerAddress = new SimulatorAddress(AddressLevel.WORKER, 1, 1, 0);
 
     private Map<String, String> properties;
     private WorkerOperationProcessor processor;
@@ -68,14 +74,12 @@ public class WorkerOperationProcessorTest {
         when(worker.startPerformanceMonitor()).thenReturn(true);
         when(worker.getWorkerConnector()).thenReturn(workerConnector);
 
-        SimulatorAddress workerAddress = new SimulatorAddress(AddressLevel.WORKER, 1, 1, 0);
-
         processor = new WorkerOperationProcessor(exceptionLogger, WorkerType.MEMBER, hazelcastInstance, worker, workerAddress);
     }
 
     @Test
-    public void process_unsupportedCommand() throws Exception {
-        SimulatorOperation operation = new IntegrationTestOperation(IntegrationTestOperation.TEST_DATA);
+    public void process_unsupportedOperation() throws Exception {
+        SimulatorOperation operation = new CreateWorkerOperation(Collections.<WorkerJvmSettings>emptyList());
         ResponseType responseType = processor.processOperation(getOperationType(operation), operation, COORDINATOR);
 
         assertEquals(UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR, responseType);
@@ -83,11 +87,41 @@ public class WorkerOperationProcessorTest {
     }
 
     @Test
-    public void process_TerminateWorkers() throws Exception {
-        TerminateWorkerOperation operation = new TerminateWorkerOperation();
+    public void process_IntegrationTestOperation_unsupportedOperation() throws Exception {
+        SimulatorOperation operation = new IntegrationTestOperation();
+        ResponseType responseType = processor.processOperation(getOperationType(operation), operation, COORDINATOR);
+
+        assertEquals(UNSUPPORTED_OPERATION_ON_THIS_PROCESSOR, responseType);
+        exceptionLogger.assertNoException();
+    }
+
+    @Test
+    public void process_Ping() {
+        PingOperation operation = new PingOperation();
+        ResponseType responseType = processor.process(operation, COORDINATOR);
+
+        assertEquals(SUCCESS, responseType);
+        verify(worker).getWorkerConnector();
+        verifyNoMoreInteractions(worker);
+    }
+
+    @Test
+    public void process_TerminateWorkers_onMemberWorker() {
+        TerminateWorkerOperation operation = new TerminateWorkerOperation(0, false);
         processor.process(operation, COORDINATOR);
 
-        verify(worker).shutdown();
+        verify(worker).shutdown(false);
+        verifyNoMoreInteractions(worker);
+    }
+
+    @Test
+    public void process_TerminateWorkers_onClientWorker() {
+        processor = new WorkerOperationProcessor(exceptionLogger, WorkerType.CLIENT, hazelcastInstance, worker, workerAddress);
+
+        TerminateWorkerOperation operation = new TerminateWorkerOperation(0, false);
+        processor.process(operation, COORDINATOR);
+
+        verify(worker).shutdown(false);
         verifyNoMoreInteractions(worker);
     }
 
@@ -135,7 +169,7 @@ public class WorkerOperationProcessorTest {
         ResponseType responseType = runCreateTestOperation(defaultTestCase);
 
         assertEquals(EXCEPTION_DURING_OPERATION_EXECUTION, responseType);
-        exceptionLogger.assertException(ClassNotFoundException.class);
+        exceptionLogger.assertException(IllegalTestException.class);
     }
 
     private void setTestCaseClass(String className) {

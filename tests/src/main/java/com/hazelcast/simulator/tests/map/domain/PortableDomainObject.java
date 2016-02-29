@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,7 @@ import java.io.IOException;
 
 public class PortableDomainObject extends AbstractDomainObject implements Portable {
 
-    public static final int CLASS_ID = 1;
-    public static final int FACTORY_ID = PortableObjectFactory.FACTORY_ID;
+    static final int CLASS_ID = 1;
 
     @Override
     public int getClassId() {
@@ -33,7 +32,7 @@ public class PortableDomainObject extends AbstractDomainObject implements Portab
 
     @Override
     public int getFactoryId() {
-        return FACTORY_ID;
+        return PortableObjectFactory.FACTORY_ID;
     }
 
     @Override

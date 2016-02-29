@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,24 @@ package com.hazelcast.simulator.worker.tasks;
  * Interface for workers who are returned by {@link com.hazelcast.simulator.test.annotations.RunWithWorker} annotated test
  * methods.
  *
- * Your implementation will get the following (optional) fields injected by {@link com.hazelcast.simulator.worker.TestContainer}:
- * {@link com.hazelcast.simulator.test.TestContext TestContext} testContext;
- * {@link com.hazelcast.simulator.probes.Probe Probe} workerProbe;
- * <code>long</code> logFrequency;
+ * The {@link com.hazelcast.simulator.test.TestContainer} supports the following injections for your implementation:
+ * {@link com.hazelcast.simulator.test.annotations.InjectTestContext}
+ * {@link com.hazelcast.simulator.test.annotations.InjectHazelcastInstance}
+ * {@link com.hazelcast.simulator.test.annotations.InjectProbe}
  */
 public interface IWorker extends Runnable {
 
     /**
+     * Name for the default {@link com.hazelcast.simulator.probes.Probe} which will be injected to the worker by the
+     * {@link com.hazelcast.simulator.test.TestContainer}.
+     */
+    String DEFAULT_WORKER_PROBE_NAME = "workerProbe";
+
+    /**
      * Implement this method if you need to execute code once after all workers have finished their run phase.
      *
-     * Will always be called by the {@link com.hazelcast.simulator.worker.TestContainer}, regardless of errors in the run phase.
+     * Will always be called by the {@link com.hazelcast.simulator.test.TestContainer}, regardless of errors in the run phase.
      * Will be executed after {@link com.hazelcast.simulator.utils.ThreadSpawner#awaitCompletion()} on a single worker instance.
      */
-    void afterCompletion();
+    void afterCompletion() throws Exception;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
-import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -45,7 +44,7 @@ import java.io.Serializable;
  */
 public class MapSerializationTest {
 
-    public enum Serializer {
+    private enum Serializer {
         SERIALIZABLE,
         EXTERNALIZABLE,
         DATA_SERIALIZABLE,
@@ -54,12 +53,8 @@ public class MapSerializationTest {
 
     // properties
     public String basename = MapSerializationTest.class.getSimpleName();
-    public int threadCount = 10;
     public int keyCount = 1000000;
     public Serializer serializer = Serializer.SERIALIZABLE;
-
-    // probes
-    public Probe probe;
 
     private IMap<Integer, Object> map;
 
@@ -107,14 +102,14 @@ public class MapSerializationTest {
         new TestRunner<MapSerializationTest>(test).run();
     }
 
-    public static class ExternalizableValue implements Externalizable {
+    private static class ExternalizableValue implements Externalizable {
 
         private int value;
 
         public ExternalizableValue() {
         }
 
-        public ExternalizableValue(int value) {
+        ExternalizableValue(int value) {
             this.value = value;
         }
 
@@ -133,11 +128,11 @@ public class MapSerializationTest {
         }
     }
 
-    public static class SerializableValue implements Serializable {
+    private static class SerializableValue implements Serializable {
 
         private int value;
 
-        public SerializableValue(int value) {
+        SerializableValue(int value) {
             this.value = value;
         }
 
@@ -146,15 +141,15 @@ public class MapSerializationTest {
         }
     }
 
-    @SuppressWarnings("unused")
-    public static class DataSerializableValue implements DataSerializable {
+    private static class DataSerializableValue implements DataSerializable {
 
         private int value;
 
+        @SuppressWarnings("unused")
         public DataSerializableValue() {
         }
 
-        public DataSerializableValue(int value) {
+        DataSerializableValue(int value) {
             this.value = value;
         }
 

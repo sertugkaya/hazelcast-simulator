@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,50 @@
  */
 package com.hazelcast.simulator.protocol.operation;
 
+import com.hazelcast.simulator.protocol.core.SimulatorAddress;
+import com.hazelcast.simulator.protocol.registry.TargetType;
+import com.hazelcast.simulator.worker.WorkerType;
+
+import java.util.Collections;
+import java.util.List;
+
 /**
- * Starts the {@link com.hazelcast.simulator.test.TestPhase#RUN} of a Simulator test.
+ * Starts the {@link com.hazelcast.simulator.test.TestPhase#RUN} phase of a Simulator Test.
  */
 public class StartTestOperation implements SimulatorOperation {
 
-    private final boolean isPassiveMember;
+    /**
+     * Defines which Workers should execute the RUN phase by their {@link WorkerType}.
+     */
+    private final TargetType targetType;
 
-    public StartTestOperation(boolean isPassiveMember) {
-        this.isPassiveMember = isPassiveMember;
+    /**
+     * Defines which Workers should execute the RUN phase by their {@link SimulatorAddress}.
+     */
+    private final List<String> targetWorkers;
+
+    public StartTestOperation() {
+        this(TargetType.ALL);
     }
 
-    public boolean isPassiveMember() {
-        return isPassiveMember;
+    public StartTestOperation(TargetType targetType) {
+        this(targetType, Collections.<String>emptyList());
+    }
+
+    public StartTestOperation(TargetType targetType, List<String> targetWorkers) {
+        this.targetType = targetType;
+        this.targetWorkers = targetWorkers;
+    }
+
+    public boolean matchesTargetType(WorkerType workerType) {
+        return targetType.matches(workerType.isMember());
+    }
+
+    public boolean matchesTargetWorkers(SimulatorAddress workerAddress) {
+        return (targetWorkers.isEmpty() || targetWorkers.contains(workerAddress.toString()));
+    }
+
+    public TargetType getTargetType() {
+        return targetType;
     }
 }

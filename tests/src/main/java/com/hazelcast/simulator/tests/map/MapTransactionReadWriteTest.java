@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 import com.hazelcast.transaction.TransactionalTask;
 import com.hazelcast.transaction.TransactionalTaskContext;
 
@@ -56,15 +56,11 @@ public class MapTransactionReadWriteTest {
     public int valueLength = 10;
     public int keyCount = 10000;
     public int valueCount = 10000;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int minNumberOfMembers = 0;
 
     public double putProb = 0.1;
     public boolean useSet = false;
-
-    // probes
-    public Probe putProbe;
-    public Probe getProbe;
 
     private final OperationSelectorBuilder<Operation> builder = new OperationSelectorBuilder<Operation>();
 
@@ -89,7 +85,7 @@ public class MapTransactionReadWriteTest {
     @Warmup(global = false)
     public void warmup() {
         waitClusterSize(LOGGER, targetInstance, minNumberOfMembers);
-        keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, targetInstance);
+        keys = generateIntKeys(keyCount, keyLocality, targetInstance);
 
         Random random = new Random();
         Streamer<Integer, Integer> streamer = StreamerFactory.getInstance(map);
@@ -105,20 +101,21 @@ public class MapTransactionReadWriteTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker() {
             super(builder);
         }
 
         @Override
-        public void timeStep(Operation operation) {
+        public void timeStep(Operation operation, Probe probe) {
             final int key = randomKey();
             final int value = randomValue();
+            long started;
 
             switch (operation) {
                 case PUT:
-                    putProbe.started();
+                    started = System.nanoTime();
                     targetInstance.executeTransaction(new TransactionalTask<Object>() {
                         @Override
                         public Object execute(TransactionalTaskContext transactionalTaskContext) {
@@ -131,10 +128,10 @@ public class MapTransactionReadWriteTest {
                             return null;
                         }
                     });
-                    putProbe.done();
+                    probe.done(started);
                     break;
                 case GET:
-                    getProbe.started();
+                    started = System.nanoTime();
                     targetInstance.executeTransaction(new TransactionalTask<Object>() {
                         @Override
                         public Object execute(TransactionalTaskContext transactionalTaskContext) {
@@ -143,7 +140,7 @@ public class MapTransactionReadWriteTest {
                             return null;
                         }
                     });
-                    getProbe.done();
+                    probe.done(started);
                     break;
                 default:
                     throw new UnsupportedOperationException();

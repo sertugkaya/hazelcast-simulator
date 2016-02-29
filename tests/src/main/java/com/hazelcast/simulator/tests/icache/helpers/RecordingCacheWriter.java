@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@ public class RecordingCacheWriter<K, V> implements CacheWriter<K, V>, Serializab
 
     @Override
     public void write(Cache.Entry<? extends K, ? extends V> entry) {
-
         if (writeDelayMs > 0) {
             sleepMillis(writeDelayMs);
         }
@@ -51,7 +50,6 @@ public class RecordingCacheWriter<K, V> implements CacheWriter<K, V>, Serializab
 
     @Override
     public void writeAll(Collection<Cache.Entry<? extends K, ? extends V>> entries) {
-
         if (writeAllDelayMs > 0) {
             sleepMillis(writeAllDelayMs);
         }
@@ -64,7 +62,6 @@ public class RecordingCacheWriter<K, V> implements CacheWriter<K, V>, Serializab
     @Override
     @SuppressWarnings("unchecked")
     public void delete(Object object) {
-
         if (deleteDelayMs > 0) {
             sleepMillis(deleteDelayMs);
         }
@@ -79,7 +76,6 @@ public class RecordingCacheWriter<K, V> implements CacheWriter<K, V>, Serializab
 
     @Override
     public void deleteAll(Collection<?> entries) {
-
         if (deleteAllDelayMs > 0) {
             sleepMillis(deleteAllDelayMs);
         }

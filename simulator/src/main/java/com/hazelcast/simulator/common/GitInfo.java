@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package com.hazelcast.simulator.common;
 
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
@@ -66,23 +65,20 @@ public final class GitInfo {
     }
 
     static Properties loadGitProperties(String fileName) {
-        InputStream inputStream = null;
+        Properties properties = new Properties();
+        InputStream inputStream = GitInfo.class.getClassLoader().getResourceAsStream(fileName);
         try {
-            inputStream = GitInfo.class.getClassLoader().getResourceAsStream(fileName);
-            if (inputStream != null) {
-                Properties properties = new Properties();
-                properties.load(inputStream);
-                return properties;
-            }
-        } catch (IOException e) {
+            properties.load(inputStream);
+            return properties;
+        } catch (Exception e) {
             LOGGER.warn("Error while loading Git properties from " + fileName, e);
         } finally {
             closeQuietly(inputStream);
         }
-        return new DummyProperties();
+        return new UnknownGitProperties();
     }
 
-    static class DummyProperties extends Properties {
+    static class UnknownGitProperties extends Properties {
 
         @Override
         public String getProperty(String key) {

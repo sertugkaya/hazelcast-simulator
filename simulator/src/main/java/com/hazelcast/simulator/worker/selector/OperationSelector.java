@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,11 +29,14 @@ import java.util.Random;
  * @param <T> enum of operations
  */
 public class OperationSelector<T extends Enum<T>> {
+
     private final Random random = new Random();
     private final Object[] operations;
+    private final int length;
 
     OperationSelector(Object[] operations) {
-        this.operations = operations;
+        this.operations = operations.clone();
+        this.length = operations.length;
     }
 
     /**
@@ -43,7 +46,7 @@ public class OperationSelector<T extends Enum<T>> {
      */
     @SuppressWarnings("unchecked")
     public T select() {
-        int chance = random.nextInt(operations.length);
+        int chance = random.nextInt(length);
         return (T) operations[chance];
     }
 }

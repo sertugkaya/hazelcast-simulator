@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,15 +34,15 @@ public final class GeneratorUtils {
      */
     public static String[] generateStrings(int count, int length) {
         String[] keys = new String[count];
-        for (int k = 0; k < keys.length; k++) {
-            keys[k] = generateString(length);
+        for (int i = 0; i < keys.length; i++) {
+            keys[i] = generateString(length);
         }
         return keys;
     }
 
     public static String generateString(int length) {
         StringBuilder sb = new StringBuilder();
-        for (int k = 0; k < length; k++) {
+        for (int i = 0; i < length; i++) {
             char c = ALPHABET.charAt(RANDOM.nextInt(ALPHABET.length()));
             sb.append(c);
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,13 +25,13 @@ import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.test.annotations.Verify;
-import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.utils.ThreadSpawner;
 
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
+import static com.hazelcast.simulator.tests.helpers.KeyLocality.RANDOM;
 import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateStringKeys;
 import static org.junit.Assert.assertEquals;
 
@@ -41,7 +41,6 @@ public class QueueTest {
 
     // properties
     public String basename = QueueTest.class.getSimpleName();
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
     public int queueLength = 100;
     public int threadsPerQueue = 1;
     public int messagesPerQueue = 1;
@@ -60,7 +59,8 @@ public class QueueTest {
 
         queues = new IQueue[queueLength];
 
-        String[] names = generateStringKeys(basename, queueLength, basename.length() + 5, keyLocality, targetInstance);
+        // the KeyLocality has to be RANDOM here, since we need different queues on each Worker
+        String[] names = generateStringKeys(basename, queueLength, basename.length() + 5, RANDOM, targetInstance);
         for (int i = 0; i < queues.length; i++) {
             queues[i] = targetInstance.getQueue(names[i]);
         }
@@ -84,8 +84,8 @@ public class QueueTest {
         long expected = totalCounter.get();
         long actual = 0;
         for (Queue<Long> queue : queues) {
-            for (Long l : queue) {
-                actual += l;
+            for (Long queueCounter : queue) {
+                actual += queueCounter;
             }
         }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import com.hazelcast.simulator.protocol.connector.ServerConnector;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 import com.hazelcast.simulator.protocol.operation.PerformanceStateOperation;
 import com.hazelcast.simulator.protocol.operation.TestHistogramOperation;
-import com.hazelcast.simulator.worker.TestContainer;
+import com.hazelcast.simulator.test.TestContainer;
 import org.HdrHistogram.Histogram;
 import org.apache.log4j.Logger;
 
@@ -42,7 +42,7 @@ import static com.hazelcast.simulator.worker.performance.PerformanceUtils.writeT
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
- * Monitors the performance of all running tests on {@link com.hazelcast.simulator.worker.MemberWorker}
+ * Monitors the performance of all running Simulator Tests on {@link com.hazelcast.simulator.worker.MemberWorker}
  * and {@link com.hazelcast.simulator.worker.ClientWorker} instances.
  */
 public class WorkerPerformanceMonitor {
@@ -52,8 +52,9 @@ public class WorkerPerformanceMonitor {
     private final MonitorThread thread;
 
     public WorkerPerformanceMonitor(ServerConnector serverConnector, Collection<TestContainer> testContainers,
-                                    int workerPerformanceMonitorIntervalSeconds) {
-        this.thread = new MonitorThread(serverConnector, testContainers, workerPerformanceMonitorIntervalSeconds);
+                                    int workerPerformanceMonitorInterval, TimeUnit workerPerformanceIntervalTimeUnit) {
+        long intervalNanos = workerPerformanceIntervalTimeUnit.toNanos(workerPerformanceMonitorInterval);
+        this.thread = new MonitorThread(serverConnector, testContainers, intervalNanos);
     }
 
     public boolean start() {
@@ -73,7 +74,18 @@ public class WorkerPerformanceMonitor {
         joinThread(thread);
     }
 
+    /**
+     * Internal thread to monitor the performance of Simulator Tests.
+     *
+     * Iterates over all {@link TestContainer} to retrieve performance values from all {@link Probe} instances.
+     * Sends performance numbers as {@link PerformanceState} to the Coordinator.
+     * Writes performance stats to files.
+     *
+     * Holds one {@link PerformanceTracker} instance per Simulator Test.
+     */
     private static final class MonitorThread extends Thread {
+
+        private static final long WAIT_FOR_TEST_CONTAINERS_DELAY_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
 
         private static final Logger LOGGER = Logger.getLogger(MonitorThread.class);
 
@@ -87,14 +99,13 @@ public class WorkerPerformanceMonitor {
 
         private volatile boolean isRunning = true;
 
-        private MonitorThread(ServerConnector serverConnector, Collection<TestContainer> testContainers,
-                              int workerPerformanceMonitorIntervalSeconds) {
+        private MonitorThread(ServerConnector serverConnector, Collection<TestContainer> testContainers, long intervalNanos) {
             super("WorkerPerformanceMonitorThread");
             setDaemon(true);
 
             this.serverConnector = serverConnector;
             this.testContainers = testContainers;
-            this.intervalNanos = TimeUnit.SECONDS.toNanos(workerPerformanceMonitorIntervalSeconds);
+            this.intervalNanos = intervalNanos;
 
             writeThroughputHeader(globalThroughputFile, true);
         }
@@ -105,13 +116,17 @@ public class WorkerPerformanceMonitor {
                 long startedNanos = System.nanoTime();
                 long currentTimestamp = System.currentTimeMillis();
 
-                updatePerformanceStates(currentTimestamp);
+                boolean runningTestContainerFound = updatePerformanceStates(currentTimestamp);
                 sendPerformanceStates();
                 writeStatsToFiles(currentTimestamp);
 
                 long elapsedNanos = System.nanoTime() - startedNanos;
                 if (intervalNanos > elapsedNanos) {
-                    sleepNanos(intervalNanos - elapsedNanos);
+                    if (runningTestContainerFound) {
+                        sleepNanos(intervalNanos - elapsedNanos);
+                    } else {
+                        sleepNanos(WAIT_FOR_TEST_CONTAINERS_DELAY_NANOS - elapsedNanos);
+                    }
                 } else {
                     LOGGER.warn("WorkerPerformanceMonitorThread.run() took " + NANOSECONDS.toMillis(elapsedNanos) + " ms");
                 }
@@ -131,12 +146,13 @@ public class WorkerPerformanceMonitor {
             }
         }
 
-        private void updatePerformanceStates(long currentTimestamp) {
+        private boolean updatePerformanceStates(long currentTimestamp) {
+            boolean runningTestContainerFound = false;
             for (TestContainer testContainer : testContainers) {
-                String testId = testContainer.getTestContext().getTestId();
                 if (!testContainer.isRunning()) {
                     continue;
                 }
+                runningTestContainerFound = true;
 
                 Map<String, Probe> probeMap = testContainer.getProbeMap();
                 Map<String, Histogram> intervalHistograms = new HashMap<String, Histogram>(probeMap.size());
@@ -147,9 +163,11 @@ public class WorkerPerformanceMonitor {
                 long intervalOperationalCount = 0;
 
                 for (Map.Entry<String, Probe> entry : probeMap.entrySet()) {
+                    String probeName = entry.getKey();
                     Probe probe = entry.getValue();
+
                     Histogram intervalHistogram = probe.getIntervalHistogram();
-                    intervalHistograms.put(entry.getKey(), intervalHistogram);
+                    intervalHistograms.put(probeName, intervalHistogram);
 
                     long percentileValue = intervalHistogram.getValueAtPercentile(INTERVAL_LATENCY_PERCENTILE);
                     if (percentileValue > intervalPercentileLatency) {
@@ -168,10 +186,12 @@ public class WorkerPerformanceMonitor {
                     }
                 }
 
+                String testId = testContainer.getTestContext().getTestId();
                 PerformanceTracker tracker = getOrCreatePerformanceTracker(testId, testContainer);
                 tracker.update(intervalHistograms, intervalPercentileLatency, intervalAvgLatency, intervalMaxLatency,
                         intervalOperationalCount, currentTimestamp);
             }
+            return runningTestContainerFound;
         }
 
         private PerformanceTracker getOrCreatePerformanceTracker(String testId, TestContainer testContainer) {
@@ -187,13 +207,15 @@ public class WorkerPerformanceMonitor {
         private void sendPerformanceStates() {
             PerformanceStateOperation operation = new PerformanceStateOperation();
             for (Map.Entry<String, PerformanceTracker> trackerEntry : trackerMap.entrySet()) {
-                PerformanceTracker stats = trackerEntry.getValue();
-                if (stats.isUpdated()) {
+                PerformanceTracker tracker = trackerEntry.getValue();
+                if (tracker.isUpdated()) {
                     String testId = trackerEntry.getKey();
-                    operation.addPerformanceState(testId, stats.createPerformanceState());
+                    operation.addPerformanceState(testId, tracker.createPerformanceState());
                 }
             }
-            serverConnector.submit(SimulatorAddress.COORDINATOR, operation);
+            if (operation.getPerformanceStates().size() > 0) {
+                serverConnector.submit(SimulatorAddress.COORDINATOR, operation);
+            }
         }
 
         private void writeStatsToFiles(long currentTimestamp) {
@@ -206,14 +228,14 @@ public class WorkerPerformanceMonitor {
             long globalOperationsCount = 0;
             double globalIntervalThroughput = 0;
 
-            // test performance stats
-            for (PerformanceTracker stats : trackerMap.values()) {
-                if (stats.getAndResetIsUpdated()) {
-                    stats.writeStatsToFile(dateString);
+            // performance stats per Simulator Test
+            for (PerformanceTracker tracker : trackerMap.values()) {
+                if (tracker.getAndResetIsUpdated()) {
+                    tracker.writeStatsToFile(dateString);
 
-                    globalIntervalOperationCount += stats.getIntervalOperationCount();
-                    globalOperationsCount += stats.getTotalOperationCount();
-                    globalIntervalThroughput += stats.getIntervalThroughput();
+                    globalIntervalOperationCount += tracker.getIntervalOperationCount();
+                    globalOperationsCount += tracker.getTotalOperationCount();
+                    globalIntervalThroughput += tracker.getIntervalThroughput();
                 }
             }
 

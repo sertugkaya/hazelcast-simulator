@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import com.hazelcast.simulator.utils.ThrottlingLogger;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -57,8 +57,6 @@ public class MultiValueMapTest {
     public int maxNestedValues = 100;
     public double putProbability = 0.5;
     public boolean useIndex;
-
-    public Probe queryProbe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -96,7 +94,7 @@ public class MultiValueMapTest {
         return new Worker(operationSelectorBuilder);
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker(OperationSelectorBuilder<Operation> operationSelectorBuilder) {
             super(operationSelectorBuilder);
@@ -107,23 +105,26 @@ public class MultiValueMapTest {
         }
 
         @Override
-        protected void timeStep(Operation operation) throws Exception {
+        protected void timeStep(Operation operation, Probe probe) throws Exception {
             int key = getRandomKey();
+            long started;
 
             switch (operation) {
                 case PUT:
                     int count = key % maxNestedValues;
                     SillySequence sillySequence = new SillySequence(key, count);
+                    started = System.nanoTime();
                     map.put(key, sillySequence);
+                    probe.done(started);
                     break;
                 case QUERY:
                     Predicate predicate = Predicates.equal("payloadField[any]", key);
-                    queryProbe.started();
+                    started = System.nanoTime();
                     Collection<SillySequence> result = null;
                     try {
                         result = map.values(predicate);
                     } finally {
-                        queryProbe.done();
+                        probe.done(started);
                     }
                     THROTTLING_LOGGER.info(format("Query 'payloadField[any]= %d' returned %d results.", key, result.size()));
                     for (SillySequence resultSillySequence : result) {
@@ -150,12 +151,12 @@ public class MultiValueMapTest {
         }
     }
 
-    @SuppressWarnings("unused")
     private static class SillySequence implements DataSerializable {
 
         int count;
         Collection<Integer> payloadField;
 
+        @SuppressWarnings("unused")
         SillySequence() {
         }
 

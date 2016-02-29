@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.query.TruePredicate;
-import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
@@ -54,7 +53,6 @@ public class AllValuesTest {
     public int valueLength = 1000;
     // a switch between using IMap.keySet() or IMap.keySet(true-predicate)
     public boolean usePredicate = false;
-    public Probe latency;
 
     private IMap<String, String> map;
     private HazelcastInstance targetInstance;
@@ -91,14 +89,12 @@ public class AllValuesTest {
 
         @Override
         protected void timeStep() throws Exception {
-            latency.started();
             Collection<String> result;
             if (usePredicate) {
                 result = map.values(TruePredicate.INSTANCE);
             } else {
                 result = map.values();
             }
-            latency.done();
 
             assertEquals(entryCount, result.size());
         }

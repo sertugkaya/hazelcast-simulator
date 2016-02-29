@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 
 import java.util.Random;
 
@@ -53,15 +53,11 @@ public class IntIntMapTest {
     public int valueCount = 10000;
     public int keyLength = 10;
     public int valueLength = 10;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int minNumberOfMembers = 0;
 
     public double putProb = 0.1;
     public boolean useSet = false;
-
-    // probes
-    public Probe putProbe;
-    public Probe getProbe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -87,7 +83,7 @@ public class IntIntMapTest {
     @Warmup(global = false)
     public void warmup() {
         waitClusterSize(LOGGER, targetInstance, minNumberOfMembers);
-        keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, targetInstance);
+        keys = generateIntKeys(keyCount, keyLocality, targetInstance);
         Streamer<Integer, Integer> streamer = StreamerFactory.getInstance(map);
         Random random = new Random();
         for (int key : keys) {
@@ -102,31 +98,32 @@ public class IntIntMapTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker() {
             super(operationSelectorBuilder);
         }
 
         @Override
-        protected void timeStep(Operation operation) throws Exception {
+        protected void timeStep(Operation operation, Probe probe) throws Exception {
             int key = randomKey();
+            long started;
 
             switch (operation) {
                 case PUT:
                     int value = randomValue();
-                    putProbe.started();
+                    started = System.nanoTime();
                     if (useSet) {
                         map.set(key, value);
                     } else {
                         map.put(key, value);
                     }
-                    putProbe.done();
+                    probe.done(started);
                     break;
                 case GET:
-                    getProbe.started();
+                    started = System.nanoTime();
                     map.get(key);
-                    getProbe.done();
+                    probe.done(started);
                     break;
                 default:
                     throw new UnsupportedOperationException();

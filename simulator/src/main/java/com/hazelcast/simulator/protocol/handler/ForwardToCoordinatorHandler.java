@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,11 +61,12 @@ public class ForwardToCoordinatorHandler extends SimpleChannelInboundHandler<Byt
                 LOGGER.trace(format("[%d] %s %s forwarding message to parent", messageId, addressLevel, localAddress));
             }
 
-            workerJvmManager.updateLastSeenTimestamp(buffer);
+            SimulatorAddress sourceAddress = getSourceAddress(buffer);
+            workerJvmManager.updateLastSeenTimestamp(sourceAddress);
 
             Iterator<Channel> iterator = connectionManager.getChannels().iterator();
             if (!iterator.hasNext()) {
-                ctx.writeAndFlush(new Response(messageId, getSourceAddress(buffer), localAddress, FAILURE_COORDINATOR_NOT_FOUND));
+                ctx.writeAndFlush(new Response(messageId, sourceAddress, localAddress, FAILURE_COORDINATOR_NOT_FOUND));
                 return;
             }
 

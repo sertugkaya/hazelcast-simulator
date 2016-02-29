@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,10 @@ import com.hazelcast.simulator.test.annotations.Run;
 import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.utils.Bash;
 
-import java.io.File;
-import java.util.UUID;
-
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isClient;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isMemberNode;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
-import static com.hazelcast.simulator.utils.HostAddressPicker.pickHostAddress;
+import static com.hazelcast.simulator.utils.UuidUtil.newSecureUuidString;
 import static java.lang.String.format;
 
 public class ExternalClientStarterTest {
@@ -45,9 +42,9 @@ public class ExternalClientStarterTest {
 
     private final SimulatorProperties properties = new SimulatorProperties();
     private final Bash bash = new Bash(properties);
-    private final String ipAddress = pickHostAddress();
 
     private HazelcastInstance hazelcastInstance;
+    private String ipAddress;
 
     @Setup
     public void setUp(TestContext testContext) {
@@ -55,9 +52,10 @@ public class ExternalClientStarterTest {
         if (isClient(hazelcastInstance)) {
             hazelcastInstance.getAtomicLong("externalClientsStarted").addAndGet(processCount);
         }
+        ipAddress = testContext.getPublicIpAddress();
 
         // delete the local binary, so it won't get downloaded again
-        deleteQuiet(new File(binaryName));
+        deleteQuiet(binaryName);
     }
 
     @Run
@@ -70,7 +68,7 @@ public class ExternalClientStarterTest {
             String tmpArguments = arguments
                     .replace("$PROCESS_INDEX", String.valueOf(i))
                     .replace("$IP_ADDRESS", ipAddress)
-                    .replace("$UUID", UUID.randomUUID().toString());
+                    .replace("$UUID", newSecureUuidString());
 
             String tmpLogFileName = logFileName + '_' + i;
 

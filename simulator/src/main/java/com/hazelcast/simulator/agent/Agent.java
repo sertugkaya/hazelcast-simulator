@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ package com.hazelcast.simulator.agent;
 import com.hazelcast.simulator.agent.workerjvm.WorkerJvmFailureMonitor;
 import com.hazelcast.simulator.agent.workerjvm.WorkerJvmManager;
 import com.hazelcast.simulator.common.CoordinatorLogger;
+import com.hazelcast.simulator.common.ShutdownThread;
 import com.hazelcast.simulator.protocol.connector.AgentConnector;
+import com.hazelcast.simulator.protocol.operation.OperationTypeCounter;
 import com.hazelcast.simulator.test.TestSuite;
-import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.io.File;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hazelcast.simulator.common.GitInfo.getBuildTime;
@@ -46,7 +46,6 @@ public class Agent {
     private final File pidFile = new File("agent.pid");
 
     private final WorkerJvmManager workerJvmManager = new WorkerJvmManager();
-    private final WorkerJvmFailureMonitor workerJvmFailureMonitor = new WorkerJvmFailureMonitor(this, workerJvmManager);
 
     private final int addressIndex;
     private final String publicAddress;
@@ -56,13 +55,14 @@ public class Agent {
     private final String cloudIdentity;
     private final String cloudCredential;
 
+    private final WorkerJvmFailureMonitor workerJvmFailureMonitor;
     private final AgentConnector agentConnector;
     private final CoordinatorLogger coordinatorLogger;
 
     private volatile TestSuite testSuite;
 
     public Agent(int addressIndex, String publicAddress, int port, String cloudProvider, String cloudIdentity,
-                 String cloudCredential, int threadPoolSize) {
+                 String cloudCredential, int threadPoolSize, int workerLastSeenTimeoutSeconds) {
         SHUTDOWN_STARTED.set(false);
 
         this.addressIndex = addressIndex;
@@ -73,12 +73,14 @@ public class Agent {
         this.cloudIdentity = cloudIdentity;
         this.cloudCredential = cloudCredential;
 
+        this.workerJvmFailureMonitor = new WorkerJvmFailureMonitor(this, workerJvmManager, workerLastSeenTimeoutSeconds);
+
         this.agentConnector = AgentConnector.createInstance(this, workerJvmManager, port, threadPoolSize);
         this.agentConnector.start();
 
         this.coordinatorLogger = new CoordinatorLogger(agentConnector);
 
-        Runtime.getRuntime().addShutdownHook(new ShutdownThread(true));
+        Runtime.getRuntime().addShutdownHook(new AgentShutdownThread(true));
 
         createPidFile();
 
@@ -126,14 +128,13 @@ public class Agent {
         if (testSuite == null) {
             return null;
         }
-        File workersDir = new File(getSimulatorHome(), "workers");
-        ensureExistingDirectory(workersDir);
 
+        File workersDir = ensureExistingDirectory(getSimulatorHome(), "workers");
         return new File(workersDir, testSuite.getId());
     }
 
     void shutdown() throws Exception {
-        ShutdownThread thread = new ShutdownThread(false);
+        ShutdownThread thread = new AgentShutdownThread(false);
         thread.start();
         thread.awaitShutdown();
     }
@@ -184,29 +185,14 @@ public class Agent {
         LOGGER.info(format("%s=%s", name, System.getProperty(name)));
     }
 
-    private final class ShutdownThread extends Thread {
+    private final class AgentShutdownThread extends ShutdownThread {
 
-        private final CountDownLatch shutdownComplete = new CountDownLatch(1);
-
-        private final boolean shutdownLog4j;
-
-        private ShutdownThread(boolean shutdownLog4j) {
-            super("AgentShutdownThread");
-            setDaemon(true);
-
-            this.shutdownLog4j = shutdownLog4j;
-        }
-
-        private void awaitShutdown() throws Exception {
-            shutdownComplete.await();
+        private AgentShutdownThread(boolean shutdownLog4j) {
+            super("AgentShutdownThread", SHUTDOWN_STARTED, shutdownLog4j);
         }
 
         @Override
-        public void run() {
-            if (!SHUTDOWN_STARTED.compareAndSet(false, true)) {
-                return;
-            }
-
+        public void doRun() {
             LOGGER.info("Stopping workers...");
             workerJvmManager.shutdown();
 
@@ -219,13 +205,7 @@ public class Agent {
             LOGGER.info("Removing PID file...");
             deleteQuiet(pidFile);
 
-            if (shutdownLog4j) {
-                // makes sure that log4j will always flush the log buffers
-                LOGGER.info("Stopping log4j...");
-                LogManager.shutdown();
-            }
-
-            shutdownComplete.countDown();
+            OperationTypeCounter.printStatistics();
         }
     }
 }

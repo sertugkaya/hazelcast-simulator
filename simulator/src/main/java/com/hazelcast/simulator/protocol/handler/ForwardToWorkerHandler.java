@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 import static com.hazelcast.simulator.protocol.core.ResponseCodec.isResponse;
 import static com.hazelcast.simulator.protocol.core.ResponseType.FAILURE_WORKER_NOT_FOUND;
@@ -48,14 +49,19 @@ public class ForwardToWorkerHandler extends SimpleChannelInboundHandler<ByteBuf>
 
     private final AttributeKey<Integer> forwardAddressIndex = AttributeKey.valueOf("forwardAddressIndex");
 
-    private final ClientConnectorManager clientConnectorManager;
     private final SimulatorAddress localAddress;
     private final AddressLevel addressLevel;
 
-    public ForwardToWorkerHandler(SimulatorAddress localAddress, ClientConnectorManager clientConnectorManager) {
-        this.clientConnectorManager = clientConnectorManager;
+    private final ClientConnectorManager clientConnectorManager;
+    private final ExecutorService executorService;
+
+    public ForwardToWorkerHandler(SimulatorAddress localAddress, ClientConnectorManager clientConnectorManager,
+                                  ExecutorService executorService) {
         this.localAddress = localAddress;
         this.addressLevel = localAddress.getAddressLevel();
+
+        this.clientConnectorManager = clientConnectorManager;
+        this.executorService = executorService;
     }
 
     @Override
@@ -72,25 +78,18 @@ public class ForwardToWorkerHandler extends SimpleChannelInboundHandler<ByteBuf>
         }
     }
 
-    private void forwardSimulatorMessage(ChannelHandlerContext ctx, ByteBuf buffer, int workerAddressIndex) {
-        long messageId = SimulatorMessageCodec.getMessageId(buffer);
+    private void forwardSimulatorMessage(final ChannelHandlerContext ctx, ByteBuf buffer, int workerAddressIndex) {
+        final long messageId = SimulatorMessageCodec.getMessageId(buffer);
 
-        Response response = new Response(messageId, getSourceAddress(buffer));
+        final List<ResponseFuture> futureList = new ArrayList<ResponseFuture>();
+        final Response response = new Response(messageId, getSourceAddress(buffer));
         if (workerAddressIndex == 0) {
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace(format("[%d] %s forwarding message to all workers", messageId, addressLevel));
             }
-            List<ResponseFuture> futureList = new ArrayList<ResponseFuture>();
             for (ClientConnector clientConnector : clientConnectorManager.getClientConnectors()) {
                 buffer.retain();
                 futureList.add(clientConnector.writeAsync(buffer));
-            }
-            try {
-                for (ResponseFuture future : futureList) {
-                    response.addResponse(future.get());
-                }
-            } catch (InterruptedException e) {
-                throw new SimulatorProtocolException("ResponseFuture.get() got interrupted!", e);
             }
         } else {
             ClientConnector clientConnector = clientConnectorManager.get(workerAddressIndex);
@@ -104,9 +103,22 @@ public class ForwardToWorkerHandler extends SimpleChannelInboundHandler<ByteBuf>
                 LOGGER.trace(format("[%d] %s forwarding message to Worker %d", messageId, addressLevel, workerAddressIndex));
             }
             buffer.retain();
-            response.addResponse(clientConnector.write(buffer));
+            futureList.add(clientConnector.writeAsync(buffer));
         }
-        ctx.writeAndFlush(response);
+        executorService.submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    for (ResponseFuture future : futureList) {
+                        response.addResponse(future.get());
+                    }
+                    ctx.writeAndFlush(response);
+                } catch (InterruptedException e) {
+                    LOGGER.warn("ResponseFuture.get() got interrupted!", e);
+                    throw new SimulatorProtocolException("ResponseFuture.get() got interrupted!", e);
+                }
+            }
+        });
     }
 
     private void forwardResponse(ChannelHandlerContext ctx, ByteBuf buffer, int workerAddressIndex) {

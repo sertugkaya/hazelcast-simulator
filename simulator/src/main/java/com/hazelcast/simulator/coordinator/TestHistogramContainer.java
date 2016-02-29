@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +73,9 @@ public class TestHistogramContainer {
     }
 
     private synchronized Result aggregateHistogramsForTestCase(String testCaseId, PerformanceState state) {
+        if (state == null) {
+            return new ResultImpl(testCaseId, 0, 0.0d);
+        }
         Result result = new ResultImpl(testCaseId, state.getOperationCount(), state.getTotalThroughput());
         for (ConcurrentMap<String, Map<String, String>> testHistogramMap : workerTestProbeHistogramMap.values()) {
             Map<String, String> probeHistogramMap = testHistogramMap.get(testCaseId);

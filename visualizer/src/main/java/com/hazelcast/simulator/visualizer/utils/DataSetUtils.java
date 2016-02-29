@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import org.HdrHistogram.HistogramIterationValue;
 import org.jfree.data.statistics.SimpleHistogramBin;
 
 public final class DataSetUtils {
+
+    private static final int PERCENTILE_FACTOR = 100;
 
     private DataSetUtils() {
     }
@@ -44,7 +46,7 @@ public final class DataSetUtils {
             }
         }
 
-        histogramDataSet.setAutoScaleValue(histogram.getValueAtPercentile(scalingPercentile * 100));
+        histogramDataSet.setAutoScaleValue(histogram.getValueAtPercentile(scalingPercentile * PERCENTILE_FACTOR));
         return histogramDataSet;
     }
 }

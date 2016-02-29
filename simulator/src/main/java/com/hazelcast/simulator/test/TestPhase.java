@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,12 @@
  */
 package com.hazelcast.simulator.test;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 
 public enum TestPhase {
+
     SETUP("setup", false),
     LOCAL_WARMUP("local warmup", false),
     GLOBAL_WARMUP("global warmup", true),
@@ -28,6 +29,8 @@ public enum TestPhase {
     LOCAL_VERIFY("local verify", false),
     GLOBAL_TEARDOWN("global tear down", true),
     LOCAL_TEARDOWN("local tear down", false);
+
+    private static final TestPhase LAST_TEST_PHASE = values()[values().length - 1];
 
     private final String description;
     private final boolean isGlobal;
@@ -45,12 +48,26 @@ public enum TestPhase {
         return isGlobal;
     }
 
-    public static ConcurrentMap<TestPhase, CountDownLatch> getTestPhaseSyncMap(boolean isParallel, int testCount,
-                                                                               TestPhase latestTestPhaseToSync) {
+    public static TestPhase getLastTestPhase() {
+        return LAST_TEST_PHASE;
+    }
+
+    public static String getIdsAsString() {
+        StringBuilder builder = new StringBuilder();
+        String delimiter = "";
+        for (TestPhase testPhase : values()) {
+            builder.append(delimiter).append(testPhase);
+            delimiter = ", ";
+        }
+        return builder.toString();
+    }
+
+    public static Map<TestPhase, CountDownLatch> getTestPhaseSyncMap(int testCount, boolean isParallel,
+                                                                     TestPhase latestTestPhaseToSync) {
         if (!isParallel) {
             return null;
         }
-        ConcurrentMap<TestPhase, CountDownLatch> testPhaseSyncMap = new ConcurrentHashMap<TestPhase, CountDownLatch>();
+        Map<TestPhase, CountDownLatch> testPhaseSyncMap = new ConcurrentHashMap<TestPhase, CountDownLatch>();
         boolean setTestCount = true;
         for (TestPhase testPhase : TestPhase.values()) {
             testPhaseSyncMap.put(testPhase, new CountDownLatch(setTestCount ? testCount : 0));

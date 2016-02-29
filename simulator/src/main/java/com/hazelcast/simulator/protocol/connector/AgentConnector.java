@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,26 +37,26 @@ import com.hazelcast.simulator.protocol.handler.SimulatorProtocolDecoder;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import com.hazelcast.simulator.protocol.processors.AgentOperationProcessor;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.simulator.protocol.core.AddressLevel.AGENT;
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
 import static com.hazelcast.simulator.protocol.exception.ExceptionType.AGENT_EXCEPTION;
+import static java.lang.Math.max;
 
 /**
  * Connector which listens for incoming Simulator Coordinator connections and manages Simulator Worker instances.
  */
+@SuppressWarnings("checkstyle:classdataabstractioncoupling")
 public class AgentConnector extends AbstractServerConnector implements ClientPipelineConfigurator {
 
-    private final ClientConnectorManager clientConnectorManager = new ClientConnectorManager();
+    private static final int MIN_THREAD_POOL_SIZE = 10;
+    private static final int DEFAULT_THREAD_POOL_SIZE = max(MIN_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors() * 2);
 
-    private final EventLoopGroup group;
+    private final ClientConnectorManager clientConnectorManager = new ClientConnectorManager();
 
     private final AgentOperationProcessor processor;
     private final ConcurrentMap<String, ResponseFuture> futureMap;
@@ -69,12 +69,10 @@ public class AgentConnector extends AbstractServerConnector implements ClientPip
 
     AgentConnector(ConcurrentMap<String, ResponseFuture> futureMap, SimulatorAddress localAddress, int port, Agent agent,
                    WorkerJvmManager workerJvmManager, ConnectionManager connectionManager, int threadPoolSize) {
-        super(futureMap, localAddress, port);
-
-        this.group = new NioEventLoopGroup(threadPoolSize);
+        super(futureMap, localAddress, port, threadPoolSize);
 
         RemoteExceptionLogger exceptionLogger = new RemoteExceptionLogger(localAddress, AGENT_EXCEPTION, this);
-        this.processor = new AgentOperationProcessor(exceptionLogger, agent, workerJvmManager);
+        this.processor = new AgentOperationProcessor(exceptionLogger, agent, workerJvmManager, getExecutorService());
 
         this.futureMap = futureMap;
 
@@ -95,7 +93,7 @@ public class AgentConnector extends AbstractServerConnector implements ClientPip
         pipeline.addLast("forwardToCoordinatorHandler", new ForwardToCoordinatorHandler(localAddress, connectionManager,
                 workerJvmManager));
         pipeline.addLast("responseHandler", new ResponseHandler(localAddress, remoteAddress, getFutureMap()));
-        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor));
+        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor, getExecutorService()));
         pipeline.addLast("exceptionHandler", new ExceptionHandler(this));
     }
 
@@ -107,16 +105,11 @@ public class AgentConnector extends AbstractServerConnector implements ClientPip
         pipeline.addLast("messageEncoder", new MessageEncoder(localAddress, COORDINATOR));
         pipeline.addLast("frameDecoder", new SimulatorFrameDecoder());
         pipeline.addLast("protocolDecoder", new SimulatorProtocolDecoder(localAddress));
-        pipeline.addLast("forwardToWorkerHandler", new ForwardToWorkerHandler(localAddress, clientConnectorManager));
-        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor));
+        pipeline.addLast("forwardToWorkerHandler", new ForwardToWorkerHandler(localAddress, clientConnectorManager,
+                getExecutorService()));
+        pipeline.addLast("messageConsumeHandler", new MessageConsumeHandler(localAddress, processor, getExecutorService()));
         pipeline.addLast("responseHandler", new ResponseHandler(localAddress, COORDINATOR, futureMap, addressIndex));
         pipeline.addLast("exceptionHandler", new ExceptionHandler(this));
-    }
-
-    @Override
-    void connectorShutdown() {
-        processor.shutdown();
-        group.shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS).syncUninterruptibly();
     }
 
     @Override
@@ -143,6 +136,8 @@ public class AgentConnector extends AbstractServerConnector implements ClientPip
         SimulatorAddress localAddress = new SimulatorAddress(AGENT, agent.getAddressIndex(), 0, 0);
         ConnectionManager connectionManager = new ConnectionManager();
 
+        threadPoolSize = max(DEFAULT_THREAD_POOL_SIZE, threadPoolSize);
+
         return new AgentConnector(futureMap, localAddress, port, agent, workerJvmManager, connectionManager, threadPoolSize);
     }
 
@@ -156,8 +151,8 @@ public class AgentConnector extends AbstractServerConnector implements ClientPip
      */
     public SimulatorAddress addWorker(int workerIndex, String workerHost, int workerPort) {
         SimulatorAddress remoteAddress = localAddress.getChild(workerIndex);
-        ClientConnector clientConnector = new ClientConnector(this, group, futureMap, localAddress, remoteAddress, workerIndex,
-                workerHost, workerPort);
+        ClientConnector clientConnector = new ClientConnector(this, getEventLoopGroup(), futureMap, localAddress, remoteAddress,
+                workerIndex, workerHost, workerPort);
         clientConnector.start();
 
         clientConnectorManager.addClient(workerIndex, clientConnector);

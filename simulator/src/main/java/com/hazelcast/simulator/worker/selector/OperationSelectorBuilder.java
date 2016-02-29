@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package com.hazelcast.simulator.worker.selector;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static java.lang.String.format;
@@ -85,6 +86,15 @@ public class OperationSelectorBuilder<T extends Enum<T>> {
     }
 
     /**
+     * Returns a set of all defined operations.
+     *
+     * @return {@link Set<T>} of all defined operations.
+     */
+    public Set<T> getOperations() {
+        return operations.keySet();
+    }
+
+    /**
      * Constructs an instance of {@link OperationSelector}.
      *
      * @return instance of OperationSelector
@@ -130,9 +140,6 @@ public class OperationSelectorBuilder<T extends Enum<T>> {
                     index++;
                 }
             }
-        }
-        if (index < arraySize) {
-            throw new IllegalStateException(format("Operations array is not filled completely (%d/%d)", index, arraySize));
         }
     }
 }

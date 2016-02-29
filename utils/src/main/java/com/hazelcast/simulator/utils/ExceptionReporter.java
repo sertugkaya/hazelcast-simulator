@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,9 +31,10 @@ import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
  */
 public final class ExceptionReporter {
 
-    public static final int MAX_EXCEPTION_COUNT = 1000;
+    static final int MAX_EXCEPTION_COUNT = 1000;
 
     static final AtomicLong FAILURE_ID = new AtomicLong(0);
+
     private static final Logger LOGGER = Logger.getLogger(ExceptionReporter.class);
 
     private ExceptionReporter() {
@@ -78,5 +79,10 @@ public final class ExceptionReporter {
 
         File file = new File(targetFileName);
         rename(tmpFile, file);
+    }
+
+    // just for testing
+    public static void reset() {
+        FAILURE_ID.set(0);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,18 +82,18 @@ public class TxnQueueWithLockTest {
                         secondLock.lock();
                         secondLock.unlock();
 
+                        queue.take();
+
                         ctx.commitTransaction();
                         counter.committed++;
 
                     } catch (Exception txnException) {
-                        // TODO: Bad exception handling
                         try {
                             ctx.rollbackTransaction();
                             counter.rolled++;
 
                             LOGGER.severe(basename + ": Exception in txn " + counter, txnException);
                         } catch (Exception rollException) {
-                            // TODO: Bad exception handling
                             counter.failedRollbacks++;
                             LOGGER.severe(basename + ": Exception in roll " + counter, rollException);
                         }
@@ -101,8 +101,7 @@ public class TxnQueueWithLockTest {
                         firstLock.unlock();
                     }
                 } catch (Exception e) {
-                    // TODO: Bad exception handling
-                    LOGGER.warning(e.getMessage(), e);
+                    LOGGER.severe(basename + ": outer Exception" + counter, e);
                 }
             }
             IList<TxnCounter> results = instance.getList(basename + "results");
@@ -126,7 +125,7 @@ public class TxnQueueWithLockTest {
         LOGGER.info(basename + ": " + total + " from " + results.size() + " worker Threads  Queue size=" + queue.size());
         assertFalse(basename + ": firstLock.isLocked()", firstLock.isLocked());
         assertFalse(basename + ": secondLock.isLocked()", secondLock.isLocked());
-        //assertEquals(total.committed - total.rolled, queue.size());
+        // TODO: check if this assert can be re-enabled: assertEquals(total.committed - total.rolled, queue.size())
     }
 
     public static void main(String[] args) throws Exception {

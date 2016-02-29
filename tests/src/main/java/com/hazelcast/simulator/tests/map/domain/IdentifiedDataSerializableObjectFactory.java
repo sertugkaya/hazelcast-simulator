@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 
 public class IdentifiedDataSerializableObjectFactory implements DataSerializableFactory {
 
-    public static final int FACTORY_ID = 4000;
+    static final int FACTORY_ID = 4000;
 
     @Override
     public IdentifiedDataSerializable create(int typeId) {

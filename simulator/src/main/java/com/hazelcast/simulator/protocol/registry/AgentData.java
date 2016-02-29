@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@ package com.hazelcast.simulator.protocol.registry;
 import com.hazelcast.simulator.protocol.core.AddressLevel;
 import com.hazelcast.simulator.protocol.core.SimulatorAddress;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 /**
  * Contains the metadata of a Simulator Agent.
  *
@@ -31,6 +34,8 @@ import com.hazelcast.simulator.protocol.core.SimulatorAddress;
  * a static setup.
  */
 public class AgentData {
+
+    private final Collection<WorkerData> workers = new ArrayList<WorkerData>();
 
     private final int addressIndex;
     private final SimulatorAddress address;
@@ -69,5 +74,17 @@ public class AgentData {
 
     public String getPrivateAddress() {
         return privateAddress;
+    }
+
+    void addWorker(WorkerData workerData) {
+        workers.add(workerData);
+    }
+
+    void removeWorker(WorkerData workerData) {
+        workers.remove(workerData);
+    }
+
+    Collection<WorkerData> getWorkers() {
+        return workers;
     }
 }

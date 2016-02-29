@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.hazelcast.simulator.tests.special;
 
+import com.hazelcast.core.IMap;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.simulator.test.TestContext;
@@ -32,6 +33,8 @@ import com.hazelcast.simulator.utils.ExceptionReporter;
 import java.util.LinkedList;
 import java.util.List;
 
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isClient;
+import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isMemberNode;
 import static com.hazelcast.simulator.utils.CommonUtils.exitWithError;
 import static org.junit.Assert.fail;
 
@@ -49,23 +52,42 @@ public class FailingTest {
         EXIT
     }
 
+    public enum Selection {
+        ALL,
+        ONE_PER_NODE,
+        ONE_PER_CLUSTER
+    }
+
+    public enum Type {
+        ALL,
+        MEMBER,
+        CLIENT
+    }
+
     private static final ILogger LOGGER = Logger.getLogger(FailingTest.class);
 
     // properties
     public TestPhase testPhase = TestPhase.RUN;
     public Failure failure = Failure.EXCEPTION;
+    public Selection selection = Selection.ALL;
+    public Type type = Type.ALL;
     public boolean throwError = false;
 
     private TestContext testContext;
+    private boolean isSelected;
 
     @Setup
     public void setUp(TestContext testContext) throws Exception {
         this.testContext = testContext;
 
+        if (matchingType(type, testContext)) {
+            isSelected = isSelected(selection, testContext);
+        }
+
         createFailure(TestPhase.SETUP);
     }
 
-    @Teardown(global = false)
+    @Teardown
     public void localTearDown() throws Exception {
         createFailure(TestPhase.LOCAL_TEARDOWN);
     }
@@ -75,7 +97,7 @@ public class FailingTest {
         createFailure(TestPhase.GLOBAL_TEARDOWN);
     }
 
-    @Warmup(global = false)
+    @Warmup
     public void localWarmup() throws Exception {
         createFailure(TestPhase.LOCAL_WARMUP);
     }
@@ -90,7 +112,7 @@ public class FailingTest {
         createFailure(TestPhase.LOCAL_VERIFY);
     }
 
-    @Verify(global = true)
+    @Verify
     public void globalVerify() throws Exception {
         createFailure(TestPhase.GLOBAL_VERIFY);
     }
@@ -101,7 +123,7 @@ public class FailingTest {
     }
 
     private void createFailure(TestPhase currentTestPhase) throws Exception {
-        if (testPhase != currentTestPhase) {
+        if (!isSelected || testPhase != currentTestPhase) {
             return;
         }
 
@@ -119,16 +141,7 @@ public class FailingTest {
                 fail("Wanted failure");
                 break;
             case OOME:
-                List<byte[]> list = new LinkedList<byte[]>();
-                for (; ; ) {
-                    try {
-                        list.add(new byte[100 * 1000 * 1000]);
-                    } catch (OutOfMemoryError ignored) {
-                        EmptyStatement.ignore(ignored);
-                        break;
-                    }
-                }
-                LOGGER.severe("We should never reach this code! List size: " + list.size());
+                createOOME();
                 break;
             case EXIT:
                 exitWithError();
@@ -152,6 +165,49 @@ public class FailingTest {
         } else {
             ExceptionReporter.report(testContext.getTestId(), error);
         }
+    }
+
+    private void createOOME() {
+        List<byte[]> list = new LinkedList<byte[]>();
+        for (; ; ) {
+            try {
+                list.add(new byte[100 * 1000 * 1000]);
+            } catch (OutOfMemoryError ignored) {
+                EmptyStatement.ignore(ignored);
+                break;
+            }
+        }
+        LOGGER.severe("We should never reach this code! List size: " + list.size());
+    }
+
+    private static boolean matchingType(Type type, TestContext testContext) {
+        if (type == Type.ALL) {
+            return true;
+        }
+        if (type == Type.MEMBER && isMemberNode(testContext.getTargetInstance())) {
+            return true;
+        }
+        if (type == Type.CLIENT && isClient(testContext.getTargetInstance())) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isSelected(Selection selection, TestContext testContext) {
+        switch (selection) {
+            case ALL:
+                return true;
+            case ONE_PER_NODE:
+                return (getMap(testContext).putIfAbsent(testContext.getPublicIpAddress(), true) == null);
+            case ONE_PER_CLUSTER:
+                return (getMap(testContext).putIfAbsent(testContext.getTestId(), true) == null);
+            default:
+                throw new UnsupportedOperationException("Unknown selection type");
+        }
+    }
+
+    private static IMap<String, Boolean> getMap(TestContext testContext) {
+        return testContext.getTargetInstance().getMap("failureSelection" + testContext.getTestId());
     }
 
     public static void main(String[] args) throws Exception {

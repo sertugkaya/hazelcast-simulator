@@ -19,8 +19,9 @@ import com.hazelcast.simulator.protocol.exception.ExceptionLogger;
 import com.hazelcast.simulator.protocol.operation.IntegrationTestOperation;
 import com.hazelcast.simulator.protocol.operation.SimulatorOperation;
 import com.hazelcast.simulator.protocol.processors.TestOperationProcessor;
+import com.hazelcast.simulator.test.TestContainer;
 import com.hazelcast.simulator.utils.ThreadSpawner;
-import com.hazelcast.simulator.worker.WorkerType;
+import com.hazelcast.simulator.worker.Worker;
 import com.hazelcast.util.ExceptionUtil;
 import org.apache.log4j.Logger;
 
@@ -32,20 +33,22 @@ import java.util.concurrent.ConcurrentMap;
 
 import static com.hazelcast.simulator.TestEnvironmentUtils.deleteLogs;
 import static com.hazelcast.simulator.protocol.core.SimulatorAddress.COORDINATOR;
+import static com.hazelcast.simulator.worker.WorkerType.MEMBER;
 import static java.lang.String.format;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ProtocolUtil {
 
-    static final SimulatorOperation DEFAULT_OPERATION = new IntegrationTestOperation(IntegrationTestOperation.TEST_DATA);
+    static final SimulatorOperation DEFAULT_OPERATION = new IntegrationTestOperation();
 
-    static final long DEFAULT_TEST_TIMEOUT_MILLIS = 5000;
+    static final long DEFAULT_TEST_TIMEOUT_MILLIS = 10000;
 
-    static final int AGENT_START_PORT = 11000;
-    private static final int WORKER_START_PORT = 11100;
+    static final int AGENT_START_PORT = 10000 + new Random().nextInt(1000);
+    private static final int WORKER_START_PORT = AGENT_START_PORT + 1000;
 
     private static final Logger LOGGER = Logger.getLogger(ProtocolUtil.class);
 
@@ -118,12 +121,17 @@ class ProtocolUtil {
     }
 
     private static WorkerConnector startWorker(int addressIndex, int parentAddressIndex, int port, int numberOfTests) {
-        WorkerConnector workerConnector = WorkerConnector.createInstance(parentAddressIndex, addressIndex, port,
-                WorkerType.MEMBER, null, null, true);
+        Worker worker = mock(Worker.class);
+        WorkerConnector workerConnector = WorkerConnector.createInstance(parentAddressIndex, addressIndex, port, MEMBER, null,
+                worker, true);
+        when(worker.getWorkerConnector()).thenReturn(workerConnector);
+
+        TestContainer testContainer = mock(TestContainer.class, RETURNS_DEEP_STUBS);
+        when(testContainer.getTestContext().getTestId()).thenReturn("ProtocolUtilTest");
 
         for (int testIndex = 1; testIndex <= numberOfTests; testIndex++) {
-            TestOperationProcessor processor = new TestOperationProcessor(EXCEPTION_LOGGER, null, WorkerType.MEMBER, testIndex,
-                    "ProtocolUtilTest", null, workerConnector.getAddress().getChild(testIndex));
+            TestOperationProcessor processor = new TestOperationProcessor(EXCEPTION_LOGGER, worker, MEMBER, testContainer,
+                    workerConnector.getAddress().getChild(testIndex));
             workerConnector.addTest(testIndex, processor);
         }
 
@@ -131,13 +139,16 @@ class ProtocolUtil {
         return workerConnector;
     }
 
-    private static AgentConnector startAgent(int addressIndex, int port, String workerHost, int workerStartPort, int numberOfWorkers) {
+    private static AgentConnector startAgent(int addressIndex, int port, String workerHost, int workerStartPort,
+                                             int numberOfWorkers) {
         Agent agent = mock(Agent.class);
         when(agent.getAddressIndex()).thenReturn(addressIndex);
 
         WorkerJvmManager workerJvmManager = new WorkerJvmManager();
 
         AgentConnector agentConnector = AgentConnector.createInstance(agent, workerJvmManager, port, 0);
+        when(agent.getAgentConnector()).thenReturn(agentConnector);
+
         for (int workerIndex = 1; workerIndex <= numberOfWorkers; workerIndex++) {
             agentConnector.addWorker(workerIndex, workerHost, workerStartPort + workerIndex);
         }
@@ -151,8 +162,8 @@ class ProtocolUtil {
         PerformanceStateContainer performanceStateContainer = new PerformanceStateContainer();
         TestHistogramContainer testHistogramContainer = new TestHistogramContainer(performanceStateContainer);
         FailureContainer failureContainer = new FailureContainer("ProtocolUtil", null);
-        CoordinatorConnector coordinatorConnector = new CoordinatorConnector(testPhaseListenerContainer,
-                performanceStateContainer, testHistogramContainer, failureContainer);
+        CoordinatorConnector coordinatorConnector = new CoordinatorConnector(failureContainer, testPhaseListenerContainer,
+                performanceStateContainer, testHistogramContainer);
         for (int i = 1; i <= numberOfAgents; i++) {
             coordinatorConnector.addAgent(i, agentHost, agentStartPort + i);
         }

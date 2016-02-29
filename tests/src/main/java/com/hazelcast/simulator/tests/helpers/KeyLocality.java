@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,54 @@ package com.hazelcast.simulator.tests.helpers;
 /**
  * Indicates if a key should be:
  * <ol>
- *     <li>LOCAL: so the key will be stored on the member</li>
- *     <li>REMOTE: if the key should be stored remote</li>
- *     <li>RANDOM: if you don't care where the key is stored</li>
- *     <li>SINGLE_PARTITION: if all traffic should go to a single partition</li>
+ * <li>LOCAL: random generated local keys (perfectly balanced)</li>
+ * <li>REMOTE: random generated remote keys (perfectly balanced)</li>
+ * <li>RANDOM: random generated keys (perfectly balanced)</li>
+ * <li>SHARED: random generated keys (same sequence on all Workers)</li>
+ * <li>SINGLE_PARTITION: constant key for hitting a single partition</li>
  * </ol>
  */
 public enum KeyLocality {
+
+    /**
+     * Generates random generated local keys (keys that point to locally owned partitions).
+     *
+     * The keys will be perfectly balanced over the partitions.
+     */
     LOCAL,
+
+    /**
+     * Generates random generated remote keys.
+     *
+     * Each worker will generate it own random set of keys, so it is very unlikely they are going to be shared.
+     *
+     * The keys will be perfectly balanced over remote partitions.
+     */
     REMOTE,
+
+    /**
+     * Generates random generated keys.
+     *
+     * Each worker will generate it own random set of keys, so it is very unlikely they are going to be shared. Also becase
+     * each worker generates its own keys, the total size of key domain is 'load-generating-worker * keycount'.
+     *
+     * If you want to pound the same keys by all members, use {@link #SHARED}.
+     *
+     * The keys will be perfectly balanced over the partitions.
+     */
     RANDOM,
-    SINGLE_PARTITION
+
+    /**
+     * Generates random generated keys (same sequence on all Workers).
+     *
+     * In doubt, this is the keyLocality you want to use. All keys will be shared by all members.
+     *
+     * Since all keys are shared, the total size of the key domain is equal to the keyCount configured on the member.
+     */
+    SHARED,
+
+    /**
+     * Generates a constant key for hitting a single partition
+     */
+    SINGLE_PARTITION,
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ abstract class AbstractMapTest {
                 streamer.pushEntry(key, value++);
             }
         } else if ("Integer".equals(keyType)) {
-            for (int key : generateIntKeys(localKeyCount, Integer.MAX_VALUE, KeyLocality.LOCAL, hazelcastInstance)) {
+            for (int key : generateIntKeys(localKeyCount, KeyLocality.LOCAL, hazelcastInstance)) {
                 streamer.pushEntry(key, value++);
             }
         } else {

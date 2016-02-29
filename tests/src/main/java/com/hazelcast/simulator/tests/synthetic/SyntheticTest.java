@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,16 +30,17 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.simulator.probes.Probe;
 import com.hazelcast.simulator.test.TestContext;
 import com.hazelcast.simulator.test.TestRunner;
+import com.hazelcast.simulator.test.annotations.InjectHazelcastInstance;
 import com.hazelcast.simulator.test.annotations.InjectProbe;
+import com.hazelcast.simulator.test.annotations.InjectTestContext;
 import com.hazelcast.simulator.test.annotations.RunWithWorker;
-import com.hazelcast.simulator.test.annotations.Setup;
 import com.hazelcast.simulator.test.annotations.Teardown;
 import com.hazelcast.simulator.tests.helpers.HazelcastTestUtils;
 import com.hazelcast.simulator.tests.helpers.KeyLocality;
+import com.hazelcast.simulator.tests.helpers.KeyUtils;
 import com.hazelcast.simulator.utils.ExceptionReporter;
 import com.hazelcast.simulator.worker.tasks.IWorker;
 import com.hazelcast.spi.OperationService;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -50,7 +51,6 @@ import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getOperat
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.getPartitionDistributionInformation;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.isClient;
 import static com.hazelcast.simulator.tests.helpers.HazelcastTestUtils.rethrow;
-import static com.hazelcast.simulator.tests.helpers.KeyUtils.generateIntKey;
 import static com.hazelcast.simulator.utils.ReflectionUtils.getFieldValue;
 
 /**
@@ -84,17 +84,17 @@ public class SyntheticTest {
     public byte asyncBackupCount = 1;
     public long backupDelayNanos = 1000 * 1000;
     public boolean randomizeBackupDelay = true;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public int keyCount = 1000;
     public int syncFrequency = 1;
     public String serviceName;
 
+    @InjectTestContext
+    private TestContext testContext;
+    @InjectHazelcastInstance
     private HazelcastInstance targetInstance;
-
-    @Setup
-    public void setup(TestContext testContext) {
-        targetInstance = testContext.getTargetInstance();
-    }
+    @InjectProbe(useForThroughput = true)
+    private Probe probe;
 
     @Teardown
     public void teardown() {
@@ -107,14 +107,7 @@ public class SyntheticTest {
         return new Worker();
     }
 
-    // FIXME get rid of this suppression via a proper @InjectTestContext annotation
-    @SuppressFBWarnings({"UWF_UNWRITTEN_PUBLIC_OR_PROTECTED_FIELD", "NP_UNWRITTEN_PUBLIC_OR_PROTECTED_FIELD"})
     private class Worker implements IWorker, ExecutionCallback<Object> {
-
-        // these fields will be injected by the TestContainer
-        public TestContext testContext;
-        @InjectProbe(useForThroughput = true)
-        public Probe workerProbe;
 
         private final List<Integer> partitionSequence = new ArrayList<Integer>();
         private final List<ICompletableFuture> futureList = new ArrayList<ICompletableFuture>(syncFrequency);
@@ -150,8 +143,8 @@ public class SyntheticTest {
                 clientPartitionService = null;
             }
 
-            for (int i = 0; i < keyCount; i++) {
-                Integer key = generateIntKey(keyCount, keyLocality, targetInstance);
+            int[] keys = KeyUtils.generateIntKeys(keyCount, keyLocality, targetInstance);
+            for (int key: keys) {
                 Partition partition = targetInstance.getPartitionService().getPartition(key);
                 partitionSequence.add(partition.getPartitionId());
             }
@@ -179,7 +172,7 @@ public class SyntheticTest {
         private void timeStep() throws Exception {
             ICompletableFuture<Object> future = invokeOnNextPartition();
             if (syncInvocation) {
-                workerProbe.started();
+                long started = System.nanoTime();
                 if (syncFrequency == 1) {
                     future.get();
                 } else {
@@ -191,7 +184,7 @@ public class SyntheticTest {
                         futureList.clear();
                     }
                 }
-                workerProbe.done();
+                probe.recordValue(System.nanoTime() - started);
             } else {
                 future.andThen(this);
             }
@@ -236,7 +229,7 @@ public class SyntheticTest {
 
         @Override
         public void onResponse(Object response) {
-            workerProbe.done();
+            probe.done();
         }
 
         @Override

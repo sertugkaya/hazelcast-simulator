@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import com.hazelcast.simulator.tests.helpers.KeyLocality;
 import com.hazelcast.simulator.worker.loadsupport.Streamer;
 import com.hazelcast.simulator.worker.loadsupport.StreamerFactory;
 import com.hazelcast.simulator.worker.selector.OperationSelectorBuilder;
-import com.hazelcast.simulator.worker.tasks.AbstractWorker;
+import com.hazelcast.simulator.worker.tasks.AbstractWorkerWithMultipleProbes;
 
 import java.util.Random;
 
@@ -48,12 +48,8 @@ public class IntByteMapTest {
     public int valueCount = 1000;
     public int minSize = 16;
     public int maxSize = 2000;
-    public KeyLocality keyLocality = KeyLocality.RANDOM;
+    public KeyLocality keyLocality = KeyLocality.SHARED;
     public double putProb = 0.3;
-
-    // probes
-    public Probe putProbe;
-    public Probe getProbe;
 
     private final OperationSelectorBuilder<Operation> operationSelectorBuilder = new OperationSelectorBuilder<Operation>();
 
@@ -65,7 +61,7 @@ public class IntByteMapTest {
     public void setUp(TestContext testContext) {
         HazelcastInstance instance = testContext.getTargetInstance();
         map = instance.getMap(basename);
-        keys = generateIntKeys(keyCount, Integer.MAX_VALUE, keyLocality, instance);
+        keys = generateIntKeys(keyCount, keyLocality, instance);
 
         if (minSize > maxSize) {
             throw new IllegalStateException("minSize can't be larger than maxSize");
@@ -103,27 +99,28 @@ public class IntByteMapTest {
         return new Worker();
     }
 
-    private class Worker extends AbstractWorker<Operation> {
+    private class Worker extends AbstractWorkerWithMultipleProbes<Operation> {
 
         public Worker() {
             super(operationSelectorBuilder);
         }
 
         @Override
-        protected void timeStep(Operation operation) throws Exception {
+        protected void timeStep(Operation operation, Probe probe) throws Exception {
             int key = keys[randomInt(keys.length)];
+            long started;
 
             switch (operation) {
                 case PUT:
                     byte[] value = values[getRandom().nextInt(values.length)];
-                    putProbe.started();
+                    started = System.nanoTime();
                     map.put(key, value);
-                    putProbe.done();
+                    probe.done(started);
                     break;
                 case GET:
-                    getProbe.started();
+                    started = System.nanoTime();
                     map.get(key);
-                    getProbe.done();
+                    probe.done(started);
                     break;
                 default:
                     throw new UnsupportedOperationException();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2015, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,12 +37,12 @@ import static com.hazelcast.simulator.test.FailureType.WORKER_TIMEOUT;
 import static com.hazelcast.simulator.utils.CommonUtils.sleepMillis;
 import static com.hazelcast.simulator.utils.FileUtils.deleteQuiet;
 import static com.hazelcast.simulator.utils.FileUtils.fileAsText;
+import static com.hazelcast.simulator.utils.FileUtils.rename;
 import static com.hazelcast.simulator.utils.FormatUtils.NEW_LINE;
 import static java.lang.String.format;
 
 public class WorkerJvmFailureMonitor {
 
-    private static final int LAST_SEEN_TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_CHECK_INTERVAL_MILLIS = (int) TimeUnit.SECONDS.toMillis(1);
 
     private static final Logger LOGGER = Logger.getLogger(WorkerJvmFailureMonitor.class);
@@ -51,12 +51,12 @@ public class WorkerJvmFailureMonitor {
 
     private int failureCount;
 
-    public WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager) {
-        this(agent, workerJvmManager, DEFAULT_CHECK_INTERVAL_MILLIS);
+    public WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager, int lastSeenTimeoutSeconds) {
+        this(agent, workerJvmManager, lastSeenTimeoutSeconds, DEFAULT_CHECK_INTERVAL_MILLIS);
     }
 
-    WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager, int checkIntervalMillis) {
-        monitorThread = new MonitorThread(agent, workerJvmManager, checkIntervalMillis);
+    WorkerJvmFailureMonitor(Agent agent, WorkerJvmManager workerJvmManager, int lastSeenTimeoutSeconds, int checkIntervalMillis) {
+        monitorThread = new MonitorThread(agent, workerJvmManager, lastSeenTimeoutSeconds, checkIntervalMillis);
         monitorThread.start();
     }
 
@@ -66,31 +66,38 @@ public class WorkerJvmFailureMonitor {
     }
 
     public void startTimeoutDetection() {
-        LOGGER.info("Starting timeout detection for Workers...");
-        monitorThread.updateLastSeen();
-        monitorThread.detectTimeouts = true;
+        if (monitorThread.lastSeenTimeoutSeconds > 0) {
+            LOGGER.info("Starting timeout detection for Workers...");
+            monitorThread.updateLastSeen();
+            monitorThread.detectTimeouts = true;
+        }
     }
 
     public void stopTimeoutDetection() {
-        LOGGER.info("Stopping timeout detection for Workers...");
-        monitorThread.detectTimeouts = false;
+        if (monitorThread.lastSeenTimeoutSeconds > 0) {
+            LOGGER.info("Stopping timeout detection for Workers...");
+            monitorThread.detectTimeouts = false;
+        }
     }
 
     private final class MonitorThread extends Thread {
 
         private final Agent agent;
         private final WorkerJvmManager workerJvmManager;
+        private final int lastSeenTimeoutSeconds;
         private final int checkIntervalMillis;
 
         private volatile boolean running = true;
         private volatile boolean detectTimeouts;
 
-        private MonitorThread(Agent agent, WorkerJvmManager workerJvmManager, int checkIntervalMillis) {
+        private MonitorThread(Agent agent, WorkerJvmManager workerJvmManager, int lastSeenTimeoutSeconds,
+                              int checkIntervalMillis) {
             super("WorkerJvmFailureMonitorThread");
             setDaemon(true);
 
             this.agent = agent;
             this.workerJvmManager = workerJvmManager;
+            this.lastSeenTimeoutSeconds = lastSeenTimeoutSeconds;
             this.checkIntervalMillis = checkIntervalMillis;
         }
 
@@ -144,10 +151,12 @@ public class WorkerJvmFailureMonitor {
                     testId = null;
                 }
 
-                // we delete the exception file so that we don't detect the same exception again
-                deleteQuiet(exceptionFile);
-
-                sendFailureOperation("Worked ran into an unhandled exception", WORKER_EXCEPTION, workerJvm, testId, cause);
+                // we delete or rename the exception file so that we don't detect the same exception again
+                if (sendFailureOperation("Worked ran into an unhandled exception", WORKER_EXCEPTION, workerJvm, testId, cause)) {
+                    deleteQuiet(exceptionFile);
+                } else {
+                    rename(exceptionFile, new File(exceptionFile.getName() + ".sendFailure"));
+                }
             }
         }
 
@@ -179,7 +188,7 @@ public class WorkerJvmFailureMonitor {
             }
 
             long elapsed = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - workerJvm.getLastSeen());
-            if (elapsed > LAST_SEEN_TIMEOUT_SECONDS) {
+            if (elapsed > 0 && elapsed % lastSeenTimeoutSeconds == 0) {
                 sendFailureOperation(format("Worker has not sent a message for %d seconds", elapsed), WORKER_TIMEOUT, workerJvm);
             }
         }
@@ -209,34 +218,43 @@ public class WorkerJvmFailureMonitor {
             sendFailureOperation(message, type, jvm, null, null);
         }
 
-        private void sendFailureOperation(String message, FailureType type, WorkerJvm jvm, String testId, String cause) {
+        private boolean sendFailureOperation(String message, FailureType type, WorkerJvm jvm, String testId, String cause) {
+            boolean sentSuccessfully = true;
             boolean isFailure = (type != WORKER_FINISHED);
             SimulatorAddress workerAddress = jvm.getAddress();
             FailureOperation operation = new FailureOperation(message, type, workerAddress, agent.getPublicAddress(),
                     jvm.getHazelcastAddress(), jvm.getId(), testId, agent.getTestSuite(), cause);
             if (isFailure) {
-                LOGGER.error(format("Detected failure on Worker %s: %s", jvm.getId(), operation.getLogMessage(++failureCount)));
+                LOGGER.error(format("Detected failure on Worker %s (%s): %s", jvm.getId(), jvm.getAddress(),
+                        operation.getLogMessage(++failureCount)));
+            } else {
+                LOGGER.info(format("Worker %s (%s) finished.", jvm.getId(), jvm.getAddress()));
             }
 
             AgentConnector agentConnector = agent.getAgentConnector();
+            try {
+                Response response = agentConnector.write(SimulatorAddress.COORDINATOR, operation);
+                ResponseType firstErrorResponseType = response.getFirstErrorResponseType();
+                if (firstErrorResponseType != ResponseType.SUCCESS) {
+                    LOGGER.error(format("Could not send failure to coordinator: %s", firstErrorResponseType));
+                    sentSuccessfully = false;
+                } else if (isFailure) {
+                    LOGGER.info("Failure successfully sent to Coordinator!");
+                }
+            } catch (SimulatorProtocolException e) {
+                if (!isInterrupted() && !(e.getCause() instanceof InterruptedException)) {
+                    LOGGER.error(format("Could not send failure to coordinator! %s", operation.getFileMessage()), e);
+                    sentSuccessfully = false;
+                }
+            }
+
             if (type.isWorkerFinishedFailure()) {
                 String finishedType = (isFailure) ? "failed" : "finished";
                 LOGGER.info(format("Removing %s Worker %s from configuration...", finishedType, workerAddress));
                 agentConnector.removeWorker(workerAddress.getWorkerIndex());
             }
 
-            try {
-                Response response = agentConnector.write(SimulatorAddress.COORDINATOR, operation);
-                if (response.getFirstErrorResponseType() != ResponseType.SUCCESS) {
-                    LOGGER.error(format("Could not send failure to coordinator! %s", operation));
-                } else if (isFailure) {
-                    LOGGER.info("Failure successfully sent to Coordinator!");
-                }
-            } catch (SimulatorProtocolException e) {
-                if (!isInterrupted()) {
-                    LOGGER.error(format("Could not send failure to coordinator! %s", operation), e);
-                }
-            }
+            return sentSuccessfully;
         }
     }
 
